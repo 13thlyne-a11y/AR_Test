@@ -40,10 +40,7 @@
 </head>
 <body>
 
-<!-- iOS용 권한 버튼 -->
 <button id="startAR">AR 시작</button>
-
-<!-- 모바일 카메라 -->
 <video id="camera" autoplay playsinline muted></video>
 
 <script type="module">
@@ -51,14 +48,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
 const video = document.getElementById("camera");
 
-// 모바일 카메라 시작
-navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-  .then(stream => {
-    video.srcObject = stream;
-    video.play();
-  });
-
-// Three.js 씬
+// Three.js 기본 설정
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 10);
 camera.position.z = 0.5;
@@ -67,20 +57,11 @@ const renderer = new THREE.WebGLRenderer({ alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// 카메라 영상 텍스처
-const videoTexture = new THREE.VideoTexture(video);
-videoTexture.minFilter = THREE.LinearFilter;
-videoTexture.magFilter = THREE.LinearFilter;
-videoTexture.format = THREE.RGBFormat;
-
-const planeGeometry = new THREE.PlaneGeometry(2, 1.125); // 화면 비율에 맞춤
-const planeMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
-const videoPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-videoPlane.position.z = -0.5;
-scene.add(videoPlane);
-
 // 예제 3D 오브젝트
-const cube = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshNormalMaterial());
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(0.2, 0.2, 0.2),
+  new THREE.MeshNormalMaterial()
+);
 scene.add(cube);
 
 // 자이로 센서 연동 (iOS + Android 공용)
@@ -107,26 +88,51 @@ function onOrientation(event) {
   finalQuat.multiply(q1);
   finalQuat.multiply(screenQuat);
 
-  // 카메라 회전 (부드럽게)
   camera.quaternion.slerp(finalQuat, 0.15);
 }
 
-// iOS용 권한 버튼
-document.getElementById("startAR").addEventListener("click", () => {
-  if (typeof DeviceOrientationEvent !== "undefined" &&
-      typeof DeviceOrientationEvent.requestPermission === "function") {
-    DeviceOrientationEvent.requestPermission().then(state => {
-      if (state === "granted") startOrientation();
-    });
-  } else {
-    startOrientation(); // Android는 바로 시작
-  }
-});
-
 function startOrientation() {
   window.addEventListener("deviceorientation", onOrientation, true);
-  document.getElementById("startAR").style.display = "none"; // 버튼 숨김
 }
+
+// iOS/Android 공용 버튼
+document.getElementById("startAR").addEventListener("click", async () => {
+  // 1. 카메라 권한 요청 + play()
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch(err) {
+    alert("카메라 접근 실패: " + err);
+    return;
+  }
+
+  // 2. VideoTexture 생성 + PlaneMesh 생성
+  const videoTexture = new THREE.VideoTexture(video);
+  videoTexture.minFilter = THREE.LinearFilter;
+  videoTexture.magFilter = THREE.LinearFilter;
+  videoTexture.format = THREE.RGBFormat;
+
+  const planeGeometry = new THREE.PlaneGeometry(1.8, 1); // 화면 비율
+  const planeMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
+  const videoPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+  videoPlane.position.z = -0.5;
+  scene.add(videoPlane);
+
+  // 3. iOS DeviceOrientation 권한 요청
+  if (typeof DeviceOrientationEvent.requestPermission === "function") {
+    const state = await DeviceOrientationEvent.requestPermission();
+    if (state === "granted") startOrientation();
+  } else {
+    startOrientation(); // Android
+  }
+
+  // 4. 버튼 숨김
+  document.getElementById("startAR").style.display = "none";
+});
 
 // 애니메이션 루프
 function animate() {
