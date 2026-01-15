@@ -1,155 +1,95 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <title>Mobile AR Camera</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta charset="utf-8" />
+  <title>WebAR QR Demo</title>
+
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <!-- AR.js (A-Frame 버전) -->
+  <script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
 
   <style>
-    html, body {
+    body {
       margin: 0;
-      padding: 0;
       overflow: hidden;
-      background: black;
+      font-family: sans-serif;
     }
 
-    #camera {
-      display: none; /* HTML video는 숨김 */
-    }
-
-    canvas {
+    /* 촬영 버튼 */
+    #captureBtn {
       position: fixed;
-      top: 0;
-      left: 0;
-      z-index: 1;
-      pointer-events: none;
-    }
-
-    #startAR {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      z-index: 10;
-      padding: 12px 18px;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 14px 24px;
       font-size: 16px;
-      background: rgba(255,255,255,0.8);
-      border: none;
       border-radius: 8px;
+      border: none;
+      background: #000;
+      color: #fff;
+      z-index: 999;
+      opacity: 0.85;
+    }
+
+    #captureBtn:active {
+      opacity: 1;
     }
   </style>
 </head>
+
 <body>
 
-<button id="startAR">AR 시작</button>
-<video id="camera" autoplay playsinline muted></video>
+  <!-- AR Scene -->
+  <a-scene
+    embedded
+    arjs="sourceType: webcam; debugUIEnabled: false;"
+    renderer="logarithmicDepthBuffer: true;"
+  >
 
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    <!-- 마커 -->
+    <a-marker type="pattern" url="marker/marker.patt">
 
-const video = document.getElementById("camera");
+      <!-- AR 콘텐츠 (예제: 빨간 박스) -->
+      <a-box
+        position="0 0.5 0"
+        rotation="0 45 0"
+        scale="1 1 1"
+        color="#ff0000"
+      ></a-box>
 
-// Three.js 기본 설정
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 10);
-camera.position.z = 0.5;
+    </a-marker>
 
-const renderer = new THREE.WebGLRenderer({ alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+    <!-- 카메라 -->
+    <a-entity camera></a-entity>
+  </a-scene>
 
-// 예제 3D 오브젝트
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(0.2, 0.2, 0.2),
-  new THREE.MeshNormalMaterial()
-);
-scene.add(cube);
+  <!-- 촬영 버튼 -->
+  <button id="captureBtn">📸 촬영</button>
 
-// 자이로 센서 연동 (iOS + Android 공용)
-let deviceQuat = new THREE.Quaternion();
-let screenQuat = new THREE.Quaternion();
-let finalQuat = new THREE.Quaternion();
-const euler = new THREE.Euler();
-const zee = new THREE.Vector3(0,0,1);
-const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+  <!-- 캡처 스크립트 -->
+  <script>
+    document.getElementById("captureBtn").addEventListener("click", () => {
+      const scene = document.querySelector("a-scene");
 
-function onOrientation(event) {
-  if (event.alpha === null) return;
+      // A-Frame 렌더러 캔버스
+      const canvas = scene.renderer.domElement;
 
-  const alpha = THREE.MathUtils.degToRad(event.alpha);
-  const beta  = THREE.MathUtils.degToRad(event.beta);
-  const gamma = THREE.MathUtils.degToRad(event.gamma);
-  const orient = window.orientation !== undefined ? THREE.MathUtils.degToRad(window.orientation) : 0;
+      // 이미지 생성
+      const image = canvas.toDataURL("image/png");
 
-  euler.set(beta, alpha, -gamma, "YXZ");
-  deviceQuat.setFromEuler(euler);
-  screenQuat.setFromAxisAngle(zee, -orient);
-
-  finalQuat.copy(deviceQuat);
-  finalQuat.multiply(q1);
-  finalQuat.multiply(screenQuat);
-
-  camera.quaternion.slerp(finalQuat, 0.15);
-}
-
-function startOrientation() {
-  window.addEventListener("deviceorientation", onOrientation, true);
-}
-
-// iOS/Android 공용 버튼
-document.getElementById("startAR").addEventListener("click", async () => {
-  // 1. 카메라 권한 요청 + play()
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: false
+      // 다운로드
+      const link = document.createElement("a");
+      link.href = image;
+      link.download = "ar_capture.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     });
-    video.srcObject = stream;
-    await video.play();
-  } catch(err) {
-    alert("카메라 접근 실패: " + err);
-    return;
-  }
-
-  // 2. VideoTexture 생성 + PlaneMesh 생성
-  const videoTexture = new THREE.VideoTexture(video);
-  videoTexture.minFilter = THREE.LinearFilter;
-  videoTexture.magFilter = THREE.LinearFilter;
-  videoTexture.format = THREE.RGBFormat;
-
-  const planeGeometry = new THREE.PlaneGeometry(1.8, 1); // 화면 비율
-  const planeMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
-  const videoPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-  videoPlane.position.z = -0.5;
-  scene.add(videoPlane);
-
-  // 3. iOS DeviceOrientation 권한 요청
-  if (typeof DeviceOrientationEvent.requestPermission === "function") {
-    const state = await DeviceOrientationEvent.requestPermission();
-    if (state === "granted") startOrientation();
-  } else {
-    startOrientation(); // Android
-  }
-
-  // 4. 버튼 숨김
-  document.getElementById("startAR").style.display = "none";
-});
-
-// 애니메이션 루프
-function animate() {
-  requestAnimationFrame(animate);
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-  renderer.render(scene, camera);
-}
-animate();
-
-// 화면 리사이즈 대응
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-</script>
+  </script>
 
 </body>
 </html>
