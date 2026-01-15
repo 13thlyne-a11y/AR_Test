@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Camera Overlay AR</title>
+  <title>Mobile AR Camera</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
   <style>
@@ -14,13 +14,7 @@
     }
 
     #camera {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-      z-index: 0;
+      display: none; /* HTML video는 숨김 */
     }
 
     canvas {
@@ -30,21 +24,26 @@
       z-index: 1;
       pointer-events: none;
     }
+
+    #startAR {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      padding: 12px 18px;
+      font-size: 16px;
+      background: rgba(255,255,255,0.8);
+      border: none;
+      border-radius: 8px;
+    }
   </style>
 </head>
-
 <body>
 
-<button id="startAR" style="
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 10;
-  padding: 10px;
-">
-  AR 시작
-</button>
+<!-- iOS용 권한 버튼 -->
+<button id="startAR">AR 시작</button>
 
+<!-- 모바일 카메라 -->
 <video id="camera" autoplay playsinline muted></video>
 
 <script type="module">
@@ -52,38 +51,45 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
 const video = document.getElementById("camera");
 
+// 모바일 카메라 시작
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+  .then(stream => {
+    video.srcObject = stream;
+    video.play();
+  });
+
+// Three.js 씬
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 10);
+camera.position.z = 0.5;
+
+const renderer = new THREE.WebGLRenderer({ alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// 카메라 영상 텍스처
+const videoTexture = new THREE.VideoTexture(video);
+videoTexture.minFilter = THREE.LinearFilter;
+videoTexture.magFilter = THREE.LinearFilter;
+videoTexture.format = THREE.RGBFormat;
+
+const planeGeometry = new THREE.PlaneGeometry(1.8, 1); // 화면 비율에 맞춤
+const planeMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
+const videoPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+videoPlane.position.z = -0.5;
+scene.add(videoPlane);
+
+// 예제 3D 오브젝트
+const cube = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshNormalMaterial());
+scene.add(cube);
+
+// 자이로 센서 연동 (iOS + Android 공용)
 let deviceQuat = new THREE.Quaternion();
 let screenQuat = new THREE.Quaternion();
 let finalQuat = new THREE.Quaternion();
-
 const euler = new THREE.Euler();
-const zee = new THREE.Vector3(0, 0, 1);
-const q1 = new THREE.Quaternion(
-  -Math.sqrt(0.5),
-  0,
-  0,
-  Math.sqrt(0.5)
-);
-
-// 버튼 클릭 (iOS는 필수, Android는 그냥 통과)
-document.getElementById("startAR").addEventListener("click", () => {
-  if (
-    typeof DeviceOrientationEvent !== "undefined" &&
-    typeof DeviceOrientationEvent.requestPermission === "function"
-  ) {
-    // iOS
-    DeviceOrientationEvent.requestPermission().then(state => {
-      if (state === "granted") startOrientation();
-    });
-  } else {
-    // Android
-    startOrientation();
-  }
-});
-
-function startOrientation() {
-  window.addEventListener("deviceorientation", onOrientation, true);
-}
+const zee = new THREE.Vector3(0,0,1);
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 
 function onOrientation(event) {
   if (event.alpha === null) return;
@@ -91,55 +97,38 @@ function onOrientation(event) {
   const alpha = THREE.MathUtils.degToRad(event.alpha);
   const beta  = THREE.MathUtils.degToRad(event.beta);
   const gamma = THREE.MathUtils.degToRad(event.gamma);
+  const orient = window.orientation !== undefined ? THREE.MathUtils.degToRad(window.orientation) : 0;
 
-  const screenOrientation =
-    window.orientation !== undefined
-      ? THREE.MathUtils.degToRad(window.orientation)
-      : 0;
-
-  // YXZ 순서가 모바일에 가장 안정적
   euler.set(beta, alpha, -gamma, "YXZ");
   deviceQuat.setFromEuler(euler);
-
-  // 화면 회전 보정
-  screenQuat.setFromAxisAngle(zee, -screenOrientation);
+  screenQuat.setFromAxisAngle(zee, -orient);
 
   finalQuat.copy(deviceQuat);
   finalQuat.multiply(q1);
   finalQuat.multiply(screenQuat);
 
-  camera.quaternion.slerp(finalQuat, 0.15); // 흔들림 완화
+  // 카메라 회전 (부드럽게)
+  camera.quaternion.slerp(finalQuat, 0.15);
 }
 
-// 카메라 시작
-navigator.mediaDevices.getUserMedia({
-  video: { facingMode: "environment" },
-  audio: false
-}).then(stream => {
-  video.srcObject = stream;
+// iOS용 권한 버튼
+document.getElementById("startAR").addEventListener("click", () => {
+  if (typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission === "function") {
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === "granted") startOrientation();
+    });
+  } else {
+    startOrientation(); // Android는 바로 시작
+  }
 });
 
-// Three.js 기본 설정
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth / window.innerHeight,
-  0.01,
-  10
-);
-camera.position.z = 1;
+function startOrientation() {
+  window.addEventListener("deviceorientation", onOrientation, true);
+  document.getElementById("startAR").style.display = "none"; // 버튼 숨김
+}
 
-const renderer = new THREE.WebGLRenderer({ alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// 예제 오브젝트
-const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-const material = new THREE.MeshNormalMaterial();
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-
-// 렌더 루프
+// 애니메이션 루프
 function animate() {
   requestAnimationFrame(animate);
   cube.rotation.x += 0.01;
@@ -150,7 +139,7 @@ animate();
 
 // 화면 리사이즈 대응
 window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
