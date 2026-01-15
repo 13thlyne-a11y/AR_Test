@@ -73,7 +73,7 @@ videoTexture.minFilter = THREE.LinearFilter;
 videoTexture.magFilter = THREE.LinearFilter;
 videoTexture.format = THREE.RGBFormat;
 
-const planeGeometry = new THREE.PlaneGeometry(1.8, 1); // 화면 비율에 맞춤
+const planeGeometry = new THREE.PlaneGeometry(2, 1.125); // 화면 비율에 맞춤
 const planeMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
 const videoPlane = new THREE.Mesh(planeGeometry, planeMaterial);
 videoPlane.position.z = -0.5;
