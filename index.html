@@ -49,25 +49,10 @@
     renderer="logarithmicDepthBuffer: true;"
   >
 
-    <!-- 마커 -->
-    <a-marker type="pattern" url="marker/marker.patt">
-
-      <!-- AR 콘텐츠 (예제: 빨간 박스) -->
-      <a-box
-        position="0 0.5 0"
-        rotation="0 45 0"
-        scale="1 1 1"
-        color="#ff0000"
-      ></a-box>
-
-    </a-marker>
-
-    <!-- 카메라 -->
-    <a-entity camera></a-entity>
-  </a-scene>
-
-  <!-- 촬영 버튼 -->
-  <button id="captureBtn">📸 촬영</button>
+  <a-scene embedded arjs>
+    <a-box position = "0 0.5 0" color - "red"></a-box><a-box>
+    <a-entity camera></a-entity><a-entity>
+  </a-entity>a-scene>
 
   <!-- 캡처 스크립트 -->
   <script>
