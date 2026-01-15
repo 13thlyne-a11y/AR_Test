@@ -42,6 +42,65 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
 const video = document.getElementById("camera");
 
+let deviceQuat = new THREE.Quaternion();
+let screenQuat = new THREE.Quaternion();
+let finalQuat = new THREE.Quaternion();
+
+const euler = new THREE.Euler();
+const zee = new THREE.Vector3(0, 0, 1);
+const q1 = new THREE.Quaternion(
+  -Math.sqrt(0.5),
+  0,
+  0,
+  Math.sqrt(0.5)
+);
+
+// 버튼 클릭 (iOS는 필수, Android는 그냥 통과)
+document.getElementById("startAR").addEventListener("click", () => {
+  if (
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function"
+  ) {
+    // iOS
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === "granted") startOrientation();
+    });
+  } else {
+    // Android
+    startOrientation();
+  }
+});
+
+function startOrientation() {
+  window.addEventListener("deviceorientation", onOrientation, true);
+}
+
+function onOrientation(event) {
+  if (event.alpha === null) return;
+
+  const alpha = THREE.MathUtils.degToRad(event.alpha);
+  const beta  = THREE.MathUtils.degToRad(event.beta);
+  const gamma = THREE.MathUtils.degToRad(event.gamma);
+
+  const screenOrientation =
+    window.orientation !== undefined
+      ? THREE.MathUtils.degToRad(window.orientation)
+      : 0;
+
+  // YXZ 순서가 모바일에 가장 안정적
+  euler.set(beta, alpha, -gamma, "YXZ");
+  deviceQuat.setFromEuler(euler);
+
+  // 화면 회전 보정
+  screenQuat.setFromAxisAngle(zee, -screenOrientation);
+
+  finalQuat.copy(deviceQuat);
+  finalQuat.multiply(q1);
+  finalQuat.multiply(screenQuat);
+
+  camera.quaternion.slerp(finalQuat, 0.15); // 흔들림 완화
+}
+
 // 카메라 시작
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: "environment" },
