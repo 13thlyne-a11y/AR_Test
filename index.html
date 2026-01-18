@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR + UI + Screenshot/Recording</title>
+  <title>WebXR AR + 안내 UI</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #ui {
@@ -29,14 +29,14 @@
       padding: 8px 10px;
       border-radius: 6px;
       font-size: 14px;
+      max-width: 320px;
     }
   </style>
 </head>
 <body>
 <div id="ui">
   <div id="status">AR 버튼을 눌러 시작하세요.</div>
-  <button id="btnScreenshot">📸 스크린샷</button>
-  <button id="btnRecord">⏺ 녹화 시작</button>
+  <button id="btnGuide">📸 캡처/녹화 방법 안내</button>
   <button id="btnEnd" style="display:none">❌ AR 종료</button>
 </div>
 
@@ -50,12 +50,8 @@
   let hitTestSource = null;
   let hitTestSourceRequested = false;
 
-  let mediaRecorder;
-  let recordedChunks = [];
-
   const status = document.getElementById('status');
-  const btnScreenshot = document.getElementById('btnScreenshot');
-  const btnRecord = document.getElementById('btnRecord');
+  const btnGuide = document.getElementById('btnGuide');
   const btnEnd = document.getElementById('btnEnd');
 
   init();
@@ -76,14 +72,13 @@
 
     // AR 세션 상태 변경 감지
     renderer.xr.addEventListener('sessionstart', () => {
-      status.innerText = "AR 시작됨. 화면을 탭해 박스를 놓으세요.";
+      status.innerText = "AR 시작됨. 화면을 탭해 박스를 놓으세요.\n📸 캡처는 OS 화면 녹화/캡처 기능을 사용하세요.";
       btnEnd.style.display = 'block';
     });
 
     renderer.xr.addEventListener('sessionend', () => {
       status.innerText = "AR 종료됨. AR 버튼을 눌러 다시 시작하세요.";
       btnEnd.style.display = 'none';
-      stopRecording();
     });
 
     // 광원
@@ -163,58 +158,19 @@
     if (session) session.end();
   });
 
-  // 스크린샷 기능
-  btnScreenshot.addEventListener('click', () => {
-    renderer.domElement.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'ar_screenshot.png';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
+  // 캡처/녹화 안내 버튼
+  btnGuide.addEventListener('click', () => {
+    alert(
+      "📌 AR 화면 캡처/녹화 안내\n\n" +
+      "Android에서 AR 화면을 저장하려면 아래 방법을 사용하세요:\n\n" +
+      "1) 화면 캡처(사진):\n" +
+      "   - 전원 버튼 + 볼륨 하단 버튼 동시에 누르기\n\n" +
+      "2) 화면 녹화:\n" +
+      "   - 상단 알림창 → 화면 녹화\n\n" +
+      "📌 AR 화면은 브라우저가 카메라 영상을 합성해서 보여주기 때문에\n" +
+      "웹에서 직접 저장이 불가능합니다."
+    );
   });
-
-  // 녹화 기능
-  btnRecord.addEventListener('click', () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  });
-
-  function startRecording() {
-    const stream = renderer.domElement.captureStream(30); // 30fps
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
-
-    recordedChunks = [];
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) recordedChunks.push(event.data);
-    };
-
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'ar_recording.webm';
-      a.click();
-      URL.revokeObjectURL(url);
-    };
-
-    mediaRecorder.start();
-    btnRecord.innerText = "⏸ 녹화 중지";
-    status.innerText = "녹화 중입니다...";
-  }
-
-  function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.stop();
-      btnRecord.innerText = "⏺ 녹화 시작";
-      status.innerText = "녹화 완료. AR을 계속하거나 종료하세요.";
-    }
-  }
 </script>
 </body>
 </html>
