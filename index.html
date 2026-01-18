@@ -3,21 +3,60 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR Hit Test</title>
+  <title>WebXR AR + UI + Screenshot/Recording</title>
   <style>
     body { margin: 0; overflow: hidden; }
+    #ui {
+      position: fixed;
+      z-index: 9999;
+      left: 10px;
+      top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    button {
+      padding: 10px 14px;
+      font-size: 14px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+    }
+    #status {
+      color: white;
+      background: rgba(0,0,0,0.6);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
+<div id="ui">
+  <div id="status">AR 버튼을 눌러 시작하세요.</div>
+  <button id="btnScreenshot">📸 스크린샷</button>
+  <button id="btnRecord">⏺ 녹화 시작</button>
+  <button id="btnEnd" style="display:none">❌ AR 종료</button>
+</div>
+
 <script type="module">
   import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
   import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
   let camera, scene, renderer;
   let controller;
-  let reticle;  // 바닥 위치 표시 마커
+  let reticle;
   let hitTestSource = null;
   let hitTestSourceRequested = false;
+
+  let mediaRecorder;
+  let recordedChunks = [];
+
+  const status = document.getElementById('status');
+  const btnScreenshot = document.getElementById('btnScreenshot');
+  const btnRecord = document.getElementById('btnRecord');
+  const btnEnd = document.getElementById('btnEnd');
 
   init();
 
@@ -31,16 +70,27 @@
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // AR 버튼 (hit-test 사용)
-    document.body.appendChild(ARButton.createButton(renderer, {
-      requiredFeatures: ['hit-test']
-    }));
+    // AR 버튼 생성
+    const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+    document.body.appendChild(arButton);
+
+    // AR 세션 상태 변경 감지
+    renderer.xr.addEventListener('sessionstart', () => {
+      status.innerText = "AR 시작됨. 화면을 탭해 박스를 놓으세요.";
+      btnEnd.style.display = 'block';
+    });
+
+    renderer.xr.addEventListener('sessionend', () => {
+      status.innerText = "AR 종료됨. AR 버튼을 눌러 다시 시작하세요.";
+      btnEnd.style.display = 'none';
+      stopRecording();
+    });
 
     // 광원
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
-    // reticle (바닥 위치 표시)
+    // reticle
     reticle = new THREE.Mesh(
       new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0x00ff00 })
@@ -49,7 +99,7 @@
     reticle.visible = false;
     scene.add(reticle);
 
-    // 컨트롤러(탭 이벤트)
+    // controller
     controller = renderer.xr.getController(0);
     controller.addEventListener('select', onSelect);
     scene.add(controller);
@@ -95,7 +145,6 @@
 
         if (hitTestResults.length > 0) {
           const hit = hitTestResults[0];
-
           const pose = hit.getPose(referenceSpace);
           reticle.visible = true;
           reticle.matrix.fromArray(pose.transform.matrix);
@@ -106,6 +155,65 @@
     }
 
     renderer.render(scene, camera);
+  }
+
+  // AR 종료 버튼
+  btnEnd.addEventListener('click', () => {
+    const session = renderer.xr.getSession();
+    if (session) session.end();
+  });
+
+  // 스크린샷 기능
+  btnScreenshot.addEventListener('click', () => {
+    renderer.domElement.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ar_screenshot.png';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+
+  // 녹화 기능
+  btnRecord.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  });
+
+  function startRecording() {
+    const stream = renderer.domElement.captureStream(30); // 30fps
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) recordedChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ar_recording.webm';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    mediaRecorder.start();
+    btnRecord.innerText = "⏸ 녹화 중지";
+    status.innerText = "녹화 중입니다...";
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      btnRecord.innerText = "⏺ 녹화 시작";
+      status.innerText = "녹화 완료. AR을 계속하거나 종료하세요.";
+    }
   }
 </script>
 </body>
