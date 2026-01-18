@@ -1,47 +1,31 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
-  <script src="https://unpkg.com/aframe@1.5.0/dist/aframe.min.js"></script>
-  <script src="https://unpkg.com/@ar-js-org/ar.js@3.4.5/aframe/build/aframe-ar.min.js"></script>
-
-  <style>
-    body { margin: 0; overflow: hidden; background: black; }
-    #start {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 20px;
-      z-index: 9999;
-    }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebXR AR Test</title>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
+<body style="margin:0; overflow:hidden;">
 
-<body>
-  <div id="start">화면을 터치하면 AR 시작</div>
+<button id="btn" style="position:fixed; z-index:10;">
+  AR 시작
+</button>
 
-  <script>
-    document.getElementById('start').addEventListener('click', () => {
-      document.getElementById('start').remove();
+<script>
+document.getElementById('btn').onclick = async () => {
+  if (!navigator.xr) {
+    alert('WebXR 미지원');
+    return;
+  }
 
-      const scene = document.createElement('a-scene');
-      scene.setAttribute('arjs', 'sourceType: webcam;');
-      scene.setAttribute('vr-mode-ui', 'enabled: false');
+  const session = await navigator.xr.requestSession('immersive-ar', {
+    requiredFeatures: ['local-floor']
+  });
 
-      scene.innerHTML = `
-        <a-marker preset="hiro">
-          <a-box position="0 0.5 0" material="color: red"></a-box>
-        </a-marker>
-        <a-entity camera></a-entity>
-      `;
+  alert('👉 여기까지 오면 WebXR + 카메라 정상입니다');
+};
+</script>
 
-      document.body.appendChild(scene);
-    }, { once: true });
-  </script>
 </body>
 </html>
