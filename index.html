@@ -5,27 +5,53 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebXR AR Test</title>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js"></script>
 </head>
 <body style="margin:0; overflow:hidden;">
-
-<button id="btn" style="position:fixed; z-index:10;">
-  AR 시작
-</button>
-
 <script>
-document.getElementById('btn').onclick = async () => {
-  if (!navigator.xr) {
-    alert('WebXR 미지원');
-    return;
+  let camera, scene, renderer;
+
+  init();
+
+  function init() {
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // AR 버튼 생성
+    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+
+    // 광원
+    const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+    scene.add(light);
+
+    // 화면 터치로 박스 생성
+    const controller = renderer.xr.getController(0);
+    controller.addEventListener('select', onSelect);
+    scene.add(controller);
+
+    renderer.setAnimationLoop(render);
   }
 
-  const session = await navigator.xr.requestSession('immersive-ar', {
-    requiredFeatures: ['local-floor']
-  });
+  function onSelect() {
+    const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const box = new THREE.Mesh(geometry, material);
 
-  alert('👉 여기까지 오면 WebXR + 카메라 정상입니다');
-};
+    box.position.set(0, 0, -0.5).applyMatrix4(camera.matrixWorld);
+    box.quaternion.copy(camera.quaternion);
+
+    scene.add(box);
+  }
+
+  function render() {
+    renderer.render(scene, camera);
+  }
 </script>
-
 </body>
 </html>
