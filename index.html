@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebXR AR Test</title>
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; }
+  </style>
 </head>
-<body style="margin:0; overflow:hidden;">
-<script>
+<body>
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+  import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js';
+
   let camera, scene, renderer;
 
   init();
@@ -23,30 +27,14 @@
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // AR 버튼 생성
-    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+    // AR 버튼 생성 (여기서 카메라 권한 팝업이 뜹니다)
+    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: [] }));
 
     // 광원
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
-    // 화면 터치로 박스 생성
-    const controller = renderer.xr.getController(0);
-    controller.addEventListener('select', onSelect);
-    scene.add(controller);
-
     renderer.setAnimationLoop(render);
-  }
-
-  function onSelect() {
-    const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    const box = new THREE.Mesh(geometry, material);
-
-    box.position.set(0, 0, -0.5).applyMatrix4(camera.matrixWorld);
-    box.quaternion.copy(camera.quaternion);
-
-    scene.add(box);
   }
 
   function render() {
