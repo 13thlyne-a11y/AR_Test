@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달</title>
+  <title>WebXR AR 보름달 (Glow + Tilt)</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #ui {
@@ -44,10 +44,8 @@
   import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
   import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
-  let camera, scene, renderer;
-  let controller;
-
-  let moon = null;
+  let camera, scene, renderer, controller;
+  let moonGroup = null;
   let moonPlaced = false;
 
   const status = document.getElementById('status');
@@ -59,21 +57,14 @@
   function init() {
     scene = new THREE.Scene();
 
-    camera = new THREE.PerspectiveCamera(
-      70,
-      window.innerWidth / window.innerHeight,
-      0.01,
-      20
-    );
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // AR 버튼
-    const arButton = ARButton.createButton(renderer);
-    document.body.appendChild(arButton);
+    document.body.appendChild(ARButton.createButton(renderer));
 
     renderer.xr.addEventListener('sessionstart', () => {
       status.innerText = "화면을 한 번 탭하면 보름달이 나타납니다 🌕";
@@ -81,21 +72,18 @@
     });
 
     renderer.xr.addEventListener('sessionend', () => {
+      cleanupMoon();
       status.innerText = "AR 종료됨. 다시 시작하려면 AR 버튼을 누르세요.";
       btnEnd.style.display = 'none';
-      moonPlaced = false;
-      moon = null;
     });
 
     // 빛
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-    scene.add(hemiLight);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(1, 2, 1);
     scene.add(dirLight);
 
-    // 컨트롤러 (탭 감지)
     controller = renderer.xr.getController(0);
     controller.addEventListener('select', onSelect);
     scene.add(controller);
@@ -106,52 +94,94 @@
   function onSelect() {
     if (moonPlaced) return;
 
-    const textureLoader = new THREE.TextureLoader();
-    const moonTexture = textureLoader.load(
+    const loader = new THREE.TextureLoader();
+    const moonTexture = loader.load(
       'https://threejs.org/examples/textures/planets/moon_1024.jpg'
     );
 
-    const geometry = new THREE.SphereGeometry(0.15, 48, 48);
-    const material = new THREE.MeshStandardMaterial({
-      map: moonTexture
-    });
+    // 🌕 달 그룹 (기울어진 자전축용)
+    moonGroup = new THREE.Group();
 
-    moon = new THREE.Mesh(geometry, material);
+    // 실제 달 자전축 기울기 ≈ 6.7°
+    moonGroup.rotation.z = THREE.MathUtils.degToRad(6.7);
 
-    // 카메라 정면 1m 위치
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
+    // 달 본체
+    const moon = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15, 64, 64),
+      new THREE.MeshStandardMaterial({
+        map: moonTexture,
+        emissive: new THREE.Color(0x888888),
+        emissiveIntensity: 0.25
+      })
+    );
 
-    moon.position.copy(camera.position)
-      .add(direction.multiplyScalar(1));
+    moonGroup.add(moon);
 
-    scene.add(moon);
+    // ✨ 은은한 Glow (Sprite 방식)
+    const glowTexture = loader.load(
+      'https://threejs.org/examples/textures/sprites/glow.png'
+    );
+
+    const glow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false
+      })
+    );
+
+    glow.scale.set(0.6, 0.6, 1);
+    moonGroup.add(glow);
+
+    // 카메라 정면 1m
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    moonGroup.position.copy(camera.position).add(dir.multiplyScalar(1));
+
+    scene.add(moonGroup);
     moonPlaced = true;
 
-    status.innerText = "🌕 보름달이 천천히 회전 중입니다";
+    status.innerText = "🌕 은은하게 빛나는 보름달이 회전 중입니다";
   }
 
   function render() {
-    // 달이 있으면 천천히 회전
-    if (moon) {
-      moon.rotation.y += 0.003;
+    if (moonGroup) {
+      moonGroup.rotation.y += 0.002; // 자전
     }
-
     renderer.render(scene, camera);
   }
 
-  // AR 종료
+  function cleanupMoon() {
+    if (!moonGroup) return;
+
+    moonGroup.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else {
+          obj.material.dispose();
+        }
+      }
+    });
+
+    scene.remove(moonGroup);
+    moonGroup = null;
+    moonPlaced = false;
+  }
+
   btnEnd.addEventListener('click', () => {
     const session = renderer.xr.getSession();
     if (session) session.end();
   });
 
-  // 캡처/녹화 안내
   btnGuide.addEventListener('click', () => {
     alert(
       "📌 AR 화면 캡처/녹화 안내\n\n" +
-      "1) 화면 캡처: 전원 버튼 + 볼륨 하단\n" +
-      "2) 화면 녹화: 상단 알림창 → 화면 녹화\n\n" +
+      "• 캡처: 전원 + 볼륨 하단\n" +
+      "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
       "웹 AR은 브라우저 합성 화면이므로\n" +
       "웹에서 직접 저장은 불가능합니다."
     );
