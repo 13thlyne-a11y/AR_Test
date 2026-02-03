@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 (Natural Eclipse)</title>
+  <title>WebXR AR 보름달 (Edge Eclipse)</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #ui {
@@ -45,11 +45,11 @@
   import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
   let camera, scene, renderer, controller;
-  let moonGroup, moon, glow, shadowSphere;
+  let moonGroup, moon, glow;
+  let eclipseProgress = 0;
 
   let moonPlaced = false;
-  let tapState = 0;
-  let eclipseProgress = 0;
+  let tapState = 0; // 1: 보름달, 2: 월식, 3: 붉은 달
 
   const status = document.getElementById('status');
   const btnGuide = document.getElementById('btnGuide');
@@ -58,9 +58,7 @@
   init();
 
   function easeInOut(t) {
-    return t < 0.5
-      ? 2 * t * t
-      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
   }
 
   function init() {
@@ -72,22 +70,9 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
-
     document.body.appendChild(ARButton.createButton(renderer));
 
-    renderer.xr.addEventListener('sessionstart', () => {
-      status.innerText = "화면을 탭하면 보름달이 나타납니다 🌕";
-      btnEnd.style.display = 'block';
-    });
-
-    renderer.xr.addEventListener('sessionend', () => {
-      cleanupMoon();
-      status.innerText = "AR 종료됨. 다시 시작하려면 AR 버튼을 누르세요.";
-      btnEnd.style.display = 'none';
-    });
-
     scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(2, 2, 1);
     scene.add(dirLight);
@@ -111,8 +96,7 @@
     if (tapState === 1) {
       tapState = 2;
       eclipseProgress = 0;
-      shadowSphere.visible = true;
-      status.innerText = "🌘 월식이 서서히 진행 중입니다";
+      status.innerText = "🌘 월식이 왼쪽부터 진행 중입니다";
       return;
     }
 
@@ -125,17 +109,53 @@
 
   function createMoon() {
     const loader = new THREE.TextureLoader();
+    const moonTexture = loader.load(
+      'https://threejs.org/examples/textures/planets/moon_1024.jpg'
+    );
 
     moonGroup = new THREE.Group();
     moonGroup.rotation.z = THREE.MathUtils.degToRad(6.7);
 
+    // 🌘 월식용 셰이더
+    const eclipseMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        map: { value: moonTexture },
+        eclipse: { value: 0.0 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        uniform float eclipse;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+
+        void main() {
+          vec4 tex = texture2D(map, vUv);
+
+          // 왼쪽(-X)부터 어두워지는 그라데이션
+          float shadow = smoothstep(
+            -1.0 + eclipse,
+            -0.2 + eclipse,
+            vNormal.x
+          );
+
+          float darkness = mix(0.25, 1.0, shadow);
+          gl_FragColor = vec4(tex.rgb * darkness, tex.a);
+        }
+      `
+    });
+
     moon = new THREE.Mesh(
       new THREE.SphereGeometry(0.15, 64, 64),
-      new THREE.MeshStandardMaterial({
-        map: loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg'),
-        emissive: new THREE.Color(0xffdd88),
-        emissiveIntensity: 0.4
-      })
+      eclipseMaterial
     );
     moonGroup.add(moon);
 
@@ -150,18 +170,6 @@
     glow.scale.set(0.6, 0.6, 1);
     moonGroup.add(glow);
 
-    shadowSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 64, 64),
-      new THREE.MeshBasicMaterial({
-        color: 0x0a0a1a,
-        transparent: true,
-        opacity: 0.0
-      })
-    );
-    shadowSphere.position.set(-0.28, 0, 0.01);
-    shadowSphere.visible = false;
-    moonGroup.add(shadowSphere);
-
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
     moonGroup.position.copy(camera.position).add(dir.multiplyScalar(1));
@@ -170,11 +178,9 @@
   }
 
   function setRedMoon() {
-    moon.material.emissive.set(0xaa0000);
-    moon.material.emissiveIntensity = 0.45;
+    moon.material.uniforms.eclipse.value = 2.0;
     glow.material.color.set(0xff3333);
     glow.material.opacity = 0.5;
-    shadowSphere.visible = false;
   }
 
   function render() {
@@ -183,49 +189,15 @@
     moonGroup.rotation.y += 0.004;
 
     if (tapState === 2 && eclipseProgress < 1) {
-      eclipseProgress += 0.004;
-
+      eclipseProgress += 0.003;
       const t = easeInOut(eclipseProgress);
 
-      shadowSphere.position.x = THREE.MathUtils.lerp(-0.28, 0.18, t);
-      shadowSphere.material.opacity = THREE.MathUtils.lerp(0.0, 0.75, t);
-
-      // 밝기는 그림자보다 살짝 늦게 감소
-      const lightT = Math.max(0, t - 0.15);
-      moon.material.emissiveIntensity = THREE.MathUtils.lerp(0.4, 0.06, lightT);
-      glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.08, lightT);
+      moon.material.uniforms.eclipse.value = t * 2.0;
+      glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.1, t);
     }
 
     renderer.render(scene, camera);
   }
-
-  function cleanupMoon() {
-    if (!moonGroup) return;
-    moonGroup.traverse(obj => {
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
-    });
-    scene.remove(moonGroup);
-    moonGroup = null;
-    moonPlaced = false;
-    tapState = 0;
-  }
-
-  btnEnd.addEventListener('click', () => {
-    const session = renderer.xr.getSession();
-    if (session) session.end();
-  });
-
-  btnGuide.addEventListener('click', () => {
-    alert(
-      "📌 AR 화면 캡처/녹화 안내\n\n" +
-      "• 캡처: 전원 + 볼륨 하단\n" +
-      "        (캡처 버튼은 개인설정에 따라 다를 수 있습니다.\n" +
-      "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
-      "웹 AR은 브라우저 합성 화면이므로\n" +
-      "웹에서 직접 저장은 불가능합니다."
-    );
-  });
 </script>
 </body>
 </html>
