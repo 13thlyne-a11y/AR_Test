@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 (Real Eclipse)</title>
+  <title>WebXR AR 보름달 (Natural Eclipse)</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #ui {
@@ -48,7 +48,7 @@
   let moonGroup, moon, glow, shadowSphere;
 
   let moonPlaced = false;
-  let tapState = 0; // 0: 없음, 1: 보름달, 2: 월식, 3: 붉은 달
+  let tapState = 0;
   let eclipseProgress = 0;
 
   const status = document.getElementById('status');
@@ -56,6 +56,12 @@
   const btnEnd = document.getElementById('btnEnd');
 
   init();
+
+  function easeInOut(t) {
+    return t < 0.5
+      ? 2 * t * t
+      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  }
 
   function init() {
     scene = new THREE.Scene();
@@ -105,7 +111,8 @@
     if (tapState === 1) {
       tapState = 2;
       eclipseProgress = 0;
-      status.innerText = "🌘 지구 그림자가 달을 가리고 있습니다";
+      shadowSphere.visible = true;
+      status.innerText = "🌘 월식이 서서히 진행 중입니다";
       return;
     }
 
@@ -118,9 +125,6 @@
 
   function createMoon() {
     const loader = new THREE.TextureLoader();
-    const moonTexture = loader.load(
-      'https://threejs.org/examples/textures/planets/moon_1024.jpg'
-    );
 
     moonGroup = new THREE.Group();
     moonGroup.rotation.z = THREE.MathUtils.degToRad(6.7);
@@ -128,12 +132,11 @@
     moon = new THREE.Mesh(
       new THREE.SphereGeometry(0.15, 64, 64),
       new THREE.MeshStandardMaterial({
-        map: moonTexture,
+        map: loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg'),
         emissive: new THREE.Color(0xffdd88),
         emissiveIntensity: 0.4
       })
     );
-
     moonGroup.add(moon);
 
     glow = new THREE.Sprite(
@@ -141,25 +144,21 @@
         map: loader.load('https://threejs.org/examples/textures/sprites/glow.png'),
         color: 0xffcc66,
         transparent: true,
-        opacity: 0.45,
-        depthWrite: false
+        opacity: 0.45
       })
     );
-
     glow.scale.set(0.6, 0.6, 1);
     moonGroup.add(glow);
 
-    // 🌘 지구 그림자 (월식용)
     shadowSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(0.155, 64, 64),
+      new THREE.SphereGeometry(0.16, 64, 64),
       new THREE.MeshBasicMaterial({
-        color: 0x000000,
+        color: 0x0a0a1a,
         transparent: true,
-        opacity: 0.85
+        opacity: 0.0
       })
     );
-
-    shadowSphere.position.set(-0.25, 0, 0.01);
+    shadowSphere.position.set(-0.28, 0, 0.01);
     shadowSphere.visible = false;
     moonGroup.add(shadowSphere);
 
@@ -172,28 +171,29 @@
 
   function setRedMoon() {
     moon.material.emissive.set(0xaa0000);
-    moon.material.emissiveIntensity = 0.5;
-
+    moon.material.emissiveIntensity = 0.45;
     glow.material.color.set(0xff3333);
     glow.material.opacity = 0.5;
-
     shadowSphere.visible = false;
   }
 
   function render() {
-    if (moonGroup) {
-      moonGroup.rotation.y += 0.005;
+    if (!moonGroup) return;
 
-      // 🌘 실제 월식처럼 그림자 이동
-      if (tapState === 2 && eclipseProgress < 1) {
-        eclipseProgress += 0.006;
+    moonGroup.rotation.y += 0.004;
 
-        shadowSphere.visible = true;
-        shadowSphere.position.x = THREE.MathUtils.lerp(-0.25, 0.25, eclipseProgress);
+    if (tapState === 2 && eclipseProgress < 1) {
+      eclipseProgress += 0.004;
 
-        moon.material.emissiveIntensity = THREE.MathUtils.lerp(0.4, 0.05, eclipseProgress);
-        glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.05, eclipseProgress);
-      }
+      const t = easeInOut(eclipseProgress);
+
+      shadowSphere.position.x = THREE.MathUtils.lerp(-0.28, 0.18, t);
+      shadowSphere.material.opacity = THREE.MathUtils.lerp(0.0, 0.75, t);
+
+      // 밝기는 그림자보다 살짝 늦게 감소
+      const lightT = Math.max(0, t - 0.15);
+      moon.material.emissiveIntensity = THREE.MathUtils.lerp(0.4, 0.06, lightT);
+      glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.08, lightT);
     }
 
     renderer.render(scene, camera);
@@ -201,12 +201,10 @@
 
   function cleanupMoon() {
     if (!moonGroup) return;
-
     moonGroup.traverse(obj => {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) obj.material.dispose();
     });
-
     scene.remove(moonGroup);
     moonGroup = null;
     moonPlaced = false;
@@ -222,6 +220,7 @@
     alert(
       "📌 AR 화면 캡처/녹화 안내\n\n" +
       "• 캡처: 전원 + 볼륨 하단\n" +
+      "        (캡처 버튼은 개인설정에 따라 다를 수 있습니다.\n" +
       "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
       "웹 AR은 브라우저 합성 화면이므로\n" +
       "웹에서 직접 저장은 불가능합니다."
