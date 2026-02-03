@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 (Eclipse → Red)</title>
+  <title>WebXR AR 보름달 (Real Eclipse)</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #ui {
@@ -45,15 +45,10 @@
   import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
   let camera, scene, renderer, controller;
-  let moonGroup, moon, glow;
+  let moonGroup, moon, glow, shadowSphere;
 
   let moonPlaced = false;
-  let tapState = 0; 
-  // 0: 생성 전
-  // 1: 노란 보름달
-  // 2: 월식 진행 중
-  // 3: 붉은 달
-
+  let tapState = 0; // 0: 없음, 1: 보름달, 2: 월식, 3: 붉은 달
   let eclipseProgress = 0;
 
   const status = document.getElementById('status');
@@ -88,7 +83,7 @@
     scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(1, 2, 1);
+    dirLight.position.set(2, 2, 1);
     scene.add(dirLight);
 
     controller = renderer.xr.getController(0);
@@ -99,7 +94,6 @@
   }
 
   function onSelect() {
-    // 1️⃣ 첫 탭: 달 생성
     if (!moonPlaced) {
       createMoon();
       moonPlaced = true;
@@ -108,15 +102,13 @@
       return;
     }
 
-    // 2️⃣ 두 번째 탭: 월식 시작
     if (tapState === 1) {
       tapState = 2;
       eclipseProgress = 0;
-      status.innerText = "🌘 월식이 진행 중입니다";
+      status.innerText = "🌘 지구 그림자가 달을 가리고 있습니다";
       return;
     }
 
-    // 3️⃣ 세 번째 탭: 붉은 달
     if (tapState === 2) {
       setRedMoon();
       tapState = 3;
@@ -144,13 +136,9 @@
 
     moonGroup.add(moon);
 
-    const glowTexture = loader.load(
-      'https://threejs.org/examples/textures/sprites/glow.png'
-    );
-
     glow = new THREE.Sprite(
       new THREE.SpriteMaterial({
-        map: glowTexture,
+        map: loader.load('https://threejs.org/examples/textures/sprites/glow.png'),
         color: 0xffcc66,
         transparent: true,
         opacity: 0.45,
@@ -160,6 +148,20 @@
 
     glow.scale.set(0.6, 0.6, 1);
     moonGroup.add(glow);
+
+    // 🌘 지구 그림자 (월식용)
+    shadowSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.155, 64, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.85
+      })
+    );
+
+    shadowSphere.position.set(-0.25, 0, 0.01);
+    shadowSphere.visible = false;
+    moonGroup.add(shadowSphere);
 
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
@@ -174,23 +176,23 @@
 
     glow.material.color.set(0xff3333);
     glow.material.opacity = 0.5;
+
+    shadowSphere.visible = false;
   }
 
   function render() {
     if (moonGroup) {
       moonGroup.rotation.y += 0.005;
 
-      // 🌘 월식 애니메이션
+      // 🌘 실제 월식처럼 그림자 이동
       if (tapState === 2 && eclipseProgress < 1) {
-        eclipseProgress += 0.01;
+        eclipseProgress += 0.006;
 
-        moon.material.emissiveIntensity = THREE.MathUtils.lerp(
-          0.4, 0.05, eclipseProgress
-        );
+        shadowSphere.visible = true;
+        shadowSphere.position.x = THREE.MathUtils.lerp(-0.25, 0.25, eclipseProgress);
 
-        glow.material.opacity = THREE.MathUtils.lerp(
-          0.45, 0.05, eclipseProgress
-        );
+        moon.material.emissiveIntensity = THREE.MathUtils.lerp(0.4, 0.05, eclipseProgress);
+        glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.05, eclipseProgress);
       }
     }
 
@@ -219,7 +221,7 @@
   btnGuide.addEventListener('click', () => {
     alert(
       "📌 AR 화면 캡처/녹화 안내\n\n" +
-      "• 캡처: 전원 + 볼륨 하단 (개인설정에 따라 다를 수 있습니다.)\n" +
+      "• 캡처: 전원 + 볼륨 하단\n" +
       "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
       "웹 AR은 브라우저 합성 화면이므로\n" +
       "웹에서 직접 저장은 불가능합니다."
