@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon + Bunny (Bug Fixed Properly)</title>
+<title>WebXR AR Moon + Bunny (Stable Final)</title>
 <style>
 body { margin:0; overflow:hidden; }
 #ui {
@@ -88,11 +88,7 @@ function init(){
 
 function onSelect(){
 
-  // ✅ 실제 터치 방향 기준 ray
-  raycaster.setFromMatrixPosition(controller.matrixWorld);
-  raycaster.ray.direction.set(0,0,-1).applyMatrix4(controller.matrixWorld);
-
-  // 1️⃣ 첫 탭 → 달 생성
+  /* ✅ 1️⃣ 첫 탭은 무조건 달 생성 (ray 사용 금지) */
   if (phase === 0){
     createMoon();
     phase = 1;
@@ -100,7 +96,11 @@ function onSelect(){
     return;
   }
 
-  // 2️⃣ 달을 정확히 눌렀을 때만 상태 변화
+  /* 이제부터는 ray 필요 */
+  raycaster.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0,0,-1).applyMatrix4(controller.matrixWorld);
+
+  /* 2️⃣ 달 탭 판별 */
   const hitMoon = raycaster.intersectObject(moon);
   if (hitMoon.length > 0){
     if (phase === 1){
@@ -116,7 +116,7 @@ function onSelect(){
     return;
   }
 
-  // 3️⃣ 달 제외 화면 → 토끼 (딱 1번)
+  /* 3️⃣ 달 제외 화면 → 토끼 (1회만) */
   if (moon && !bunnyAppeared){
     spawnBunny();
     bunnyAppeared = true;
@@ -176,7 +176,6 @@ function startBunnyLineAnimation(){
 function render(){
   if (moonGroup && moonRotate) moonGroup.rotation.y += 0.003;
 
-  // 토끼 터치 감지
   if (bunnySprite && !bunnyTouched){
     raycaster.setFromMatrixPosition(controller.matrixWorld);
     raycaster.ray.direction.set(0,0,-1).applyMatrix4(controller.matrixWorld);
@@ -269,7 +268,7 @@ btnGuide.onclick = ()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n" +
     "• 캡처: 전원 + 볼륨 하단\n" +
-    "  (사용버튼은 개인설정에 따라 다를 수 있습니다.)\n" +
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n" +
     "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
     "웹 AR은 브라우저 합성 화면이므로\n" +
     "웹에서 직접 저장은 불가능합니다."
