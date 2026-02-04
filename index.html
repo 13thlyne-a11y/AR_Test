@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 (Final Polished)</title>
+  <title>WebXR AR 보름달 (Natural Moon)</title>
   <style>
     body { margin: 0; overflow: hidden; }
 
@@ -34,7 +34,6 @@
       font-size: 14px;
     }
 
-    /* ▶ START AR 버튼 스타일 강화 */
     .ar-button {
       background: rgba(0,0,0,0.85) !important;
       color: #ffffff !important;
@@ -57,7 +56,7 @@ import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARB
 let camera, scene, renderer, controller;
 let moonGroup, moon, glow;
 
-let phase = 0; // 0:none 1:full 2:eclipse 3:red
+let phase = 0;
 let eclipseProgress = 0;
 
 const status = document.getElementById('status');
@@ -92,7 +91,6 @@ function init() {
   });
 
   renderer.xr.addEventListener('sessionend', cleanupMoon);
-
   renderer.setAnimationLoop(render);
 }
 
@@ -100,7 +98,7 @@ function onSelect() {
   if (phase === 0) {
     createMoon();
     phase = 1;
-    status.innerText = "🌕 노란 보름달";
+    status.innerText = "🌕 자연스러운 보름달";
     return;
   }
 
@@ -123,12 +121,15 @@ function onSelect() {
 
 function createMoon() {
   const loader = new THREE.TextureLoader();
-
   moonGroup = new THREE.Group();
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      map: { value: loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg') },
+      map: { 
+        value: loader.load(
+          'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/moon.jpg'
+        ) 
+      },
       eclipse: { value: 0.0 },
       eclipseActive: { value: false },
       phase: { value: 0.0 }
@@ -138,7 +139,7 @@ function createMoon() {
       varying vec3 vNormal;
       void main(){
         vUv = uv;
-        vNormal = normal;
+        vNormal = normalize(normalMatrix * normal);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
       }
     `,
@@ -153,16 +154,23 @@ function createMoon() {
       void main(){
         vec3 base = texture2D(map, vUv).rgb;
 
-        // 🌕 기본 노란 보름달
-        vec3 color = base * vec3(1.15, 1.1, 0.95);
+        // 🌕 자연스러운 달 색감
+        vec3 color = base;
+        color = pow(color, vec3(0.9));
+        color *= vec3(1.05, 1.05, 1.0);
 
-        // 🌘 월식 (왼쪽 가장자리부터)
+        // 🌕 아주 약한 명암으로 입체감
+        float light = dot(normalize(vNormal), vec3(0.2, 0.0, 1.0));
+        light = clamp(light, 0.3, 1.0);
+        color *= light;
+
+        // 🌘 월식
         if (eclipseActive) {
           float edge = smoothstep(-1.0 + eclipse, -0.2 + eclipse, vNormal.x);
           color *= mix(0.3, 1.0, edge);
         }
 
-        // 🌑 은은한 붉은 달
+        // 🌑 붉은 달
         if (phase > 1.5) {
           color = base * vec3(1.15, 0.65, 0.55);
         }
@@ -177,9 +185,9 @@ function createMoon() {
 
   glow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: loader.load('https://threejs.org/examples/textures/sprites/glow.png'),
-    color: 0xffdd88,
+    color: 0xffffff,
     transparent: true,
-    opacity: 0.4
+    opacity: 0.35
   }));
   glow.scale.set(0.6,0.6,1);
   moonGroup.add(glow);
@@ -198,7 +206,7 @@ function render() {
     if (phase === 2 && eclipseProgress < 1) {
       eclipseProgress += 0.003;
       moon.material.uniforms.eclipse.value = eclipseProgress * 2.0;
-      glow.material.opacity = THREE.MathUtils.lerp(0.4, 0.12, eclipseProgress);
+      glow.material.opacity = THREE.MathUtils.lerp(0.35, 0.12, eclipseProgress);
     }
   }
 
@@ -229,7 +237,7 @@ btnGuide.onclick = () => {
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n" +
     "• 캡처: 전원 + 볼륨 하단\n" +
-    "       (개인설정에 따라 사용버튼은 다를 수 있습니다.)\n" +
+    "  (사용버튼은 개인설정에 따라 다를 수 있습니다.)\n" +
     "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
     "웹 AR은 브라우저 합성 화면이므로\n" +
     "웹에서 직접 저장은 불가능합니다."
