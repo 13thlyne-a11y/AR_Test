@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 (Natural Moon)</title>
+  <title>WebXR AR 보름달 (Eye Moon)</title>
   <style>
     body { margin: 0; overflow: hidden; }
 
@@ -36,7 +36,7 @@
 
     .ar-button {
       background: rgba(0,0,0,0.85) !important;
-      color: #ffffff !important;
+      color: #fff !important;
       border: 1px solid rgba(255,255,255,0.5) !important;
       font-weight: 600 !important;
     }
@@ -55,7 +55,6 @@ import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARB
 
 let camera, scene, renderer, controller;
 let moonGroup, moon, glow;
-
 let phase = 0;
 let eclipseProgress = 0;
 
@@ -68,9 +67,11 @@ init();
 function init() {
   scene = new THREE.Scene();
 
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+  camera = new THREE.PerspectiveCamera(
+    70, window.innerWidth / window.innerHeight, 0.01, 20
+  );
 
-  renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+  renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
@@ -79,7 +80,7 @@ function init() {
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
 
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
@@ -98,7 +99,7 @@ function onSelect() {
   if (phase === 0) {
     createMoon();
     phase = 1;
-    status.innerText = "🌕 자연스러운 보름달";
+    status.innerText = "🌕 노란 보름달";
     return;
   }
 
@@ -112,7 +113,7 @@ function onSelect() {
 
   if (phase === 2) {
     moon.material.uniforms.phase.value = 2.0;
-    glow.material.color.set(0xffaa88);
+    glow.material.color.set(0xffb088);
     glow.material.opacity = 0.45;
     phase = 3;
     status.innerText = "🌑 은은한 붉은 달";
@@ -125,10 +126,10 @@ function createMoon() {
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      map: { 
+      map: {
         value: loader.load(
           'https://threejs.org/examples/textures/planets/moon_1024.jpg'
-        ) 
+        )
       },
       eclipse: { value: 0.0 },
       eclipseActive: { value: false },
@@ -137,10 +138,10 @@ function createMoon() {
     vertexShader: `
       varying vec2 vUv;
       varying vec3 vNormal;
-      void main(){
+      void main() {
         vUv = uv;
         vNormal = normalize(normalMatrix * normal);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
@@ -151,17 +152,20 @@ function createMoon() {
       varying vec2 vUv;
       varying vec3 vNormal;
 
-      void main(){
+      void main() {
         vec3 base = texture2D(map, vUv).rgb;
 
-        // 🌕 자연스러운 달 색감
-        vec3 color = base;
-        color = pow(color, vec3(0.9));
-        color *= vec3(1.05, 1.05, 1.0);
+        // NASA 느낌 제거 (크레이터 대비 완화)
+        base = mix(base, vec3(dot(base, vec3(0.333))), 0.35);
 
-        // 🌕 아주 약한 명암으로 입체감
-        float light = dot(normalize(vNormal), vec3(0.2, 0.0, 1.0));
-        light = clamp(light, 0.3, 1.0);
+        // 🌕 맨눈 기준 노란 보름달
+        vec3 color = base;
+        color = pow(color, vec3(0.85));
+        color *= vec3(1.15, 1.12, 0.95);
+
+        // 부드러운 입체 명암
+        float light = dot(normalize(vNormal), vec3(0.1, 0.0, 1.0));
+        light = clamp(light, 0.6, 1.0);
         color *= light;
 
         // 🌘 월식
@@ -172,7 +176,7 @@ function createMoon() {
 
         // 🌑 붉은 달
         if (phase > 1.5) {
-          color = base * vec3(1.15, 0.65, 0.55);
+          color = base * vec3(1.2, 0.6, 0.55);
         }
 
         gl_FragColor = vec4(color, 1.0);
@@ -180,36 +184,44 @@ function createMoon() {
     `
   });
 
-  moon = new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64), material);
+  moon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 64, 64),
+    material
+  );
   moonGroup.add(moon);
 
-  glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: loader.load('https://threejs.org/examples/textures/sprites/glow.png'),
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.35
-  }));
-  glow.scale.set(0.6,0.6,1);
+  glow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: loader.load(
+        'https://threejs.org/examples/textures/sprites/glow.png'
+      ),
+      color: 0xffe3a0,
+      transparent: true,
+      opacity: 0.45
+    })
+  );
+  glow.scale.set(0.6, 0.6, 1);
   moonGroup.add(glow);
 
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  moonGroup.position.copy(camera.position).add(dir.multiplyScalar(1));
+  moonGroup.position
+    .copy(camera.position)
+    .add(dir.multiplyScalar(1));
 
   scene.add(moonGroup);
 }
 
 function render() {
   if (moonGroup) {
-    moonGroup.rotation.y += 0.004;
+    moonGroup.rotation.y += 0.003;
 
     if (phase === 2 && eclipseProgress < 1) {
       eclipseProgress += 0.003;
       moon.material.uniforms.eclipse.value = eclipseProgress * 2.0;
-      glow.material.opacity = THREE.MathUtils.lerp(0.35, 0.12, eclipseProgress);
+      glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.12, eclipseProgress);
     }
   }
-
   renderer.render(scene, camera);
 }
 
