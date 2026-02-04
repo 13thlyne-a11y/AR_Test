@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 (Eye Moon)</title>
+  <title>WebXR AR 보름달 (Human Eye Final)</title>
   <style>
     body { margin: 0; overflow: hidden; }
 
@@ -55,7 +55,8 @@ import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARB
 
 let camera, scene, renderer, controller;
 let moonGroup, moon, glow;
-let phase = 0;
+
+let phase = 0;            // 0:none 1:full 2:eclipse 3:red
 let eclipseProgress = 0;
 
 const status = document.getElementById('status');
@@ -71,7 +72,7 @@ function init() {
     70, window.innerWidth / window.innerHeight, 0.01, 20
   );
 
-  renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
@@ -80,7 +81,7 @@ function init() {
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
 
   controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
@@ -155,26 +156,26 @@ function createMoon() {
       void main() {
         vec3 base = texture2D(map, vUv).rgb;
 
-        // NASA 느낌 제거 (크레이터 대비 완화)
-        base = mix(base, vec3(dot(base, vec3(0.333))), 0.35);
+        // 1️⃣ 사람 눈 기준 대비 보정
+        float luma = dot(base, vec3(0.299, 0.587, 0.114));
+        base = mix(vec3(luma), base, 1.4);
+        base = pow(base, vec3(0.75));
 
-        // 🌕 맨눈 기준 노란 보름달
-        vec3 color = base;
-        color = pow(color, vec3(0.85));
-        color *= vec3(1.15, 1.12, 0.95);
+        // 2️⃣ 노란 보름달 색감
+        vec3 color = base * vec3(1.2, 1.15, 0.95);
 
-        // 부드러운 입체 명암
-        float light = dot(normalize(vNormal), vec3(0.1, 0.0, 1.0));
+        // 3️⃣ 부드러운 입체 명암
+        float light = dot(normalize(vNormal), vec3(0.15, 0.0, 1.0));
         light = clamp(light, 0.6, 1.0);
         color *= light;
 
-        // 🌘 월식
+        // 4️⃣ 월식 진행
         if (eclipseActive) {
           float edge = smoothstep(-1.0 + eclipse, -0.2 + eclipse, vNormal.x);
           color *= mix(0.3, 1.0, edge);
         }
 
-        // 🌑 붉은 달
+        // 5️⃣ 붉은 달
         if (phase > 1.5) {
           color = base * vec3(1.2, 0.6, 0.55);
         }
@@ -249,7 +250,6 @@ btnGuide.onclick = () => {
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n" +
     "• 캡처: 전원 + 볼륨 하단\n" +
-    "  (사용버튼은 개인설정에 따라 다를 수 있습니다.)\n" +
     "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
     "웹 AR은 브라우저 합성 화면이므로\n" +
     "웹에서 직접 저장은 불가능합니다."
