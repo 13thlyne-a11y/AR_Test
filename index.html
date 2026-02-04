@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon + Bunny (Final)</title>
+<title>WebXR AR Moon + Bunny (Bug Fixed Properly)</title>
 <style>
 body { margin:0; overflow:hidden; }
 #ui {
@@ -87,7 +87,10 @@ function init(){
 }
 
 function onSelect(){
-  raycaster.setFromCamera({x:0,y:0}, camera);
+
+  // ✅ 실제 터치 방향 기준 ray
+  raycaster.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0,0,-1).applyMatrix4(controller.matrixWorld);
 
   // 1️⃣ 첫 탭 → 달 생성
   if (phase === 0){
@@ -97,9 +100,9 @@ function onSelect(){
     return;
   }
 
-  // 2️⃣ 달을 실제로 탭했는지 확인
+  // 2️⃣ 달을 정확히 눌렀을 때만 상태 변화
   const hitMoon = raycaster.intersectObject(moon);
-  if (hitMoon.length){
+  if (hitMoon.length > 0){
     if (phase === 1){
       phase = 2;
       eclipseProgress = 0;
@@ -113,7 +116,7 @@ function onSelect(){
     return;
   }
 
-  // 3️⃣ 달 제외 화면 탭 → 토끼 (1번만)
+  // 3️⃣ 달 제외 화면 → 토끼 (딱 1번)
   if (moon && !bunnyAppeared){
     spawnBunny();
     bunnyAppeared = true;
@@ -122,7 +125,7 @@ function onSelect(){
 
 function spawnBunny(){
   const tex = new THREE.TextureLoader().load(
-    'https://i.imgur.com/9WfhK7C.png' // 몸 전체 토끼
+    'https://i.imgur.com/9WfhK7C.png'
   );
   bunnySprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, transparent:true })
@@ -138,7 +141,7 @@ function spawnBunny(){
 
 function startBunnyLineAnimation(){
   moonRotate = false;
-  moonGroup.rotation.y = 0; // 토끼가 보이는 면을 정면으로
+  moonGroup.rotation.y = 0;
 
   const points = [];
   const bunnyUVPath = [
@@ -164,8 +167,8 @@ function startBunnyLineAnimation(){
     geo,
     new THREE.LineBasicMaterial({ color: 0xffffff })
   );
-  moonGroup.add(bunnyLine);
 
+  moonGroup.add(bunnyLine);
   bunnyDrawProgress = 0;
   drawingBunny = true;
 }
@@ -175,7 +178,8 @@ function render(){
 
   // 토끼 터치 감지
   if (bunnySprite && !bunnyTouched){
-    raycaster.setFromCamera({x:0,y:0}, camera);
+    raycaster.setFromMatrixPosition(controller.matrixWorld);
+    raycaster.ray.direction.set(0,0,-1).applyMatrix4(controller.matrixWorld);
     const hit = raycaster.intersectObject(bunnySprite);
     if (hit.length){
       bunnyTouched = true;
@@ -184,7 +188,6 @@ function render(){
     }
   }
 
-  // 토끼 선 애니메이션
   if (drawingBunny && bunnyLine){
     bunnyDrawProgress += 0.5;
     bunnyLine.geometry.setDrawRange(0, bunnyDrawProgress);
@@ -194,7 +197,6 @@ function render(){
     }
   }
 
-  // 월식 진행
   if (phase === 2 && eclipseProgress < 1){
     eclipseProgress += 0.003;
     moon.material.uniforms.eclipse.value = eclipseProgress * 2;
