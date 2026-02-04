@@ -1,47 +1,38 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 + 토끼 (최종)</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    #ui {
-      position: fixed;
-      z-index: 9999;
-      left: 10px;
-      top: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    button {
-      padding: 10px 14px;
-      font-size: 14px;
-      border-radius: 6px;
-      border: none;
-      background: rgba(0,0,0,0.7);
-      color: white;
-    }
-    #status {
-      padding: 8px 10px;
-      background: rgba(0,0,0,0.7);
-      color: white;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    .ar-button {
-      background: rgba(0,0,0,0.85) !important;
-      color: #fff !important;
-      border: 1px solid rgba(255,255,255,0.5) !important;
-      font-weight: 600 !important;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR Moon + Bunny Line Draw (Final)</title>
+<style>
+body { margin:0; overflow:hidden; }
+#ui {
+  position:fixed;
+  top:10px; left:10px;
+  z-index:9999;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+#status, button {
+  background:rgba(0,0,0,0.7);
+  color:white;
+  border:none;
+  border-radius:6px;
+  padding:8px 12px;
+  font-size:14px;
+}
+.ar-button {
+  background:rgba(0,0,0,0.85)!important;
+  border:1px solid rgba(255,255,255,0.5)!important;
+}
+</style>
 </head>
+
 <body>
 <div id="ui">
   <div id="status">AR 버튼을 눌러 시작하세요.</div>
-  <button id="btnGuide">📸 캡처/녹화 방법 안내</button>
+  <button id="btnGuide">📸 캡처 방법 안내</button>
   <button id="btnEnd" style="display:none">❌ AR 종료</button>
 </div>
 
@@ -49,35 +40,46 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
-let camera, scene, renderer, controller;
-let moonGroup, moon, glow;
+let scene, camera, renderer, controller;
+let moon, moonGroup;
 let phase = 0;
 let eclipseProgress = 0;
 let moonRotate = true;
 
-const status = document.getElementById('status');
-const btnGuide = document.getElementById('btnGuide');
-const btnEnd = document.getElementById('btnEnd');
+let bunnySprite = null;
+let bunnyEverAppeared = false;
+let bunnyTouched = false;
 
 const raycaster = new THREE.Raycaster();
+const status = document.getElementById('status');
+const btnEnd = document.getElementById('btnEnd');
+const btnGuide = document.getElementById('btnGuide');
 
-let bunnySprite = null;
-let bunnyTexture, bunnyMaskCanvas, bunnyMaskTexture;
-let drawAnimation = null;
+/* ===== 토끼 라인 캔버스 ===== */
+const lineCanvas = document.createElement('canvas');
+lineCanvas.width = lineCanvas.height = 1024;
+const lineCtx = lineCanvas.getContext('2d');
+const lineTexture = new THREE.CanvasTexture(lineCanvas);
 
-let ignoreTouchUntil = 0;
-let moonTouchCooldown = 0;
+let lineProgress = 0;
+let lineUV = null;
 
-let bunnySpawned = false;
-let bunnyTouched = false;
+/* ===== 토끼 라인 경로 정의 ===== */
+const bunnyPath = [
+  [0.5,0.25],[0.45,0.15],[0.4,0.05], // 왼쪽 귀
+  [0.5,0.25],[0.55,0.15],[0.6,0.05], // 오른쪽 귀
+  [0.35,0.35],[0.65,0.35],           // 얼굴 상단
+  [0.7,0.55],[0.5,0.7],[0.3,0.55],   // 얼굴 하단
+  [0.35,0.35]
+];
 
 init();
 
-function init() {
+function init(){
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
 
-  renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+  renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
@@ -86,351 +88,175 @@ function init() {
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
 
   controller = renderer.xr.getController(0);
-  controller.addEventListener('select', onSelectXR);
+  controller.addEventListener('select', onSelect);
   scene.add(controller);
 
-  renderer.xr.addEventListener('sessionstart', () => {
+  renderer.xr.addEventListener('sessionstart', ()=>{
     status.innerText = "화면을 탭하면 보름달이 나타납니다 🌕";
     btnEnd.style.display = 'block';
   });
 
-  renderer.xr.addEventListener('sessionend', cleanupMoon);
+  renderer.xr.addEventListener('sessionend', cleanup);
   renderer.setAnimationLoop(render);
-
-  window.addEventListener('pointerdown', onPointerDown);
-
-  bunnyTexture = createFullBodyBunnyTexture('#ff8ab8', true);
-
-  bunnyMaskCanvas = document.createElement('canvas');
-  bunnyMaskCanvas.width = bunnyMaskCanvas.height = 1024;
-  const ctx = bunnyMaskCanvas.getContext('2d');
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0, 0, 1024, 1024);
-
-  bunnyMaskTexture = new THREE.CanvasTexture(bunnyMaskCanvas);
-  bunnyMaskTexture.needsUpdate = true;
 }
 
-function getCameraForRaycast() {
-  const xrCamera = renderer.xr.getCamera(camera);
-  if (xrCamera.isArrayCamera) return xrCamera.cameras[0];
-  return xrCamera;
-}
+function onSelect(){
+  raycaster.setFromCamera({x:0,y:0}, camera);
 
-function onPointerDown(event) {
-  if (event.target.tagName === 'BUTTON') return;
-  if (performance.now() < ignoreTouchUntil) return;
-
-  const x = (event.clientX / window.innerWidth) * 2 - 1;
-  const y = -(event.clientY / window.innerHeight) * 2 + 1;
-  const cam = getCameraForRaycast();
-
-  raycaster.setFromCamera({x, y}, cam);
-
-  if (phase === 0) {
+  if (phase === 0){
     createMoon();
     phase = 1;
     status.innerText = "🌕 노란 보름달";
-    ignoreTouchUntil = performance.now() + 300;
     return;
   }
 
-  if (moon) {
-    const intersectsMoon = raycaster.intersectObject(moon);
-    if (intersectsMoon.length > 0) {
-      onMoonTouched();
-      return;
+  const hitMoon = raycaster.intersectObject(moon);
+  if (hitMoon.length){
+    if (phase === 1){
+      phase = 2;
+      eclipseProgress = 0;
+      moon.material.uniforms.eclipseActive.value = true;
+      status.innerText = "🌘 월식";
+    } else if (phase === 2){
+      phase = 3;
+      moon.material.uniforms.phase.value = 2.0;
+      status.innerText = "🌑 붉은 달";
     }
-  }
-
-  if (!bunnySpawned && !bunnyTouched) {
-    bunnySpawned = true;
-    bunnySprite = createBunnySprite();
-    spawnBunnyAtCameraForward();
-  }
-}
-
-function onSelectXR() {
-  if (performance.now() < ignoreTouchUntil) return;
-
-  const origin = new THREE.Vector3();
-  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
-  controller.getWorldPosition(origin);
-  raycaster.set(origin, dir);
-
-  if (phase === 0) {
-    createMoon();
-    phase = 1;
-    status.innerText = "🌕 노란 보름달";
-    ignoreTouchUntil = performance.now() + 300;
     return;
   }
 
-  if (moon) {
-    const intersectsMoon = raycaster.intersectObject(moon);
-    if (intersectsMoon.length > 0) {
-      onMoonTouched();
-      return;
-    }
-  }
-
-  if (!bunnySpawned && !bunnyTouched) {
-    bunnySpawned = true;
-    bunnySprite = createBunnySprite();
-    spawnBunnyAtCameraForward();
+  if (!bunnyEverAppeared){
+    spawnBunny();
+    bunnyEverAppeared = true;
   }
 }
 
-function onMoonTouched() {
-  if (performance.now() < moonTouchCooldown) return;
-  moonTouchCooldown = performance.now() + 500;
+function spawnBunny(){
+  const tex = new THREE.TextureLoader().load('https://i.imgur.com/9WfhK7C.png');
+  bunnySprite = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true}));
+  bunnySprite.scale.set(0.3,0.3,1);
 
-  if (phase === 1) {
-    phase = 2;
-    eclipseProgress = 0;
-    moon.material.uniforms.eclipseActive.value = true;
-    status.innerText = "🌘 월식이 시작됩니다";
-    return;
-  }
-
-  if (phase === 2) {
-    moon.material.uniforms.phase.value = 2.0;
-    glow.material.color.set(0xffb088);
-    glow.material.opacity = 0.45;
-    phase = 3;
-    status.innerText = "🌑 은은한 붉은 달";
-  }
-}
-
-function spawnBunnyAtCameraForward() {
-  if (!bunnySprite) return;
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  bunnySprite.position.copy(camera.position).add(dir.multiplyScalar(1.0));
+  bunnySprite.position.copy(camera.position).add(dir.multiplyScalar(1));
 
-  bunnySprite.scale.set(0.3, 0.3, 1);
   scene.add(bunnySprite);
 }
 
-function createBunnySprite() {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: bunnyTexture,
-    transparent: true,
-    opacity: 1.0
-  }));
-  sprite.userData.isBunny = true;
-  return sprite;
+function startLineDraw(uv){
+  lineUV = uv.clone();
+  lineProgress = 0;
+  lineCtx.clearRect(0,0,1024,1024);
 }
 
-function createFullBodyBunnyTexture(color, colored = true) {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
+function drawLineStep(){
+  if (!lineUV) return;
 
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.ellipse(256, 320, 110, 140, 0, 0, Math.PI * 2);
-  ctx.fill();
+  lineProgress += 0.015;
+  const maxSeg = Math.floor(bunnyPath.length * lineProgress);
 
-  ctx.beginPath();
-  ctx.ellipse(256, 190, 90, 90, 0, 0, Math.PI * 2);
-  ctx.fill();
+  const cx = lineUV.x * 1024;
+  const cy = (1 - lineUV.y) * 1024;
+  const scale = 260;
 
-  ctx.beginPath();
-  ctx.ellipse(180, 90, 40, 120, -0.3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(332, 90, 40, 120, 0.3, 0, Math.PI * 2);
-  ctx.fill();
+  lineCtx.strokeStyle = 'rgba(255,230,180,0.95)';
+  lineCtx.lineWidth = 10;
+  lineCtx.lineCap = 'round';
+  lineCtx.beginPath();
 
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.arc(230, 190, 12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(282, 190, 12, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#ff5a8a';
-  ctx.beginPath();
-  ctx.arc(256, 220, 10, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (colored) {
-    ctx.fillStyle = 'rgba(255, 140, 200, 0.7)';
-    ctx.beginPath();
-    ctx.arc(216, 220, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(296, 220, 18, 0, Math.PI * 2);
-    ctx.fill();
+  for (let i=0;i<maxSeg;i++){
+    const p = bunnyPath[i];
+    const x = cx + (p[0]-0.5)*scale;
+    const y = cy + (p[1]-0.5)*scale;
+    if (i===0) lineCtx.moveTo(x,y);
+    else lineCtx.lineTo(x,y);
   }
 
-  return new THREE.CanvasTexture(canvas);
+  lineCtx.stroke();
+  lineTexture.needsUpdate = true;
+
+  if (lineProgress >= 1){
+    lineUV = null;
+    moonRotate = true;
+  }
 }
 
-function drawBunnyOnMoonMask(uv, alpha) {
-  const ctx = bunnyMaskCanvas.getContext('2d');
-  const size = 220;
-  const x = uv.x * bunnyMaskCanvas.width - size / 2;
-  const y = (1 - uv.y) * bunnyMaskCanvas.height - size / 2;
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = 'black';
-
-  ctx.beginPath();
-  ctx.ellipse(x + size/2, y + size*0.65, size*0.35, size*0.4, 0, 0, Math.PI * 2);
-  ctx.ellipse(x + size*0.28, y + size*0.2, size*0.15, size*0.3, -0.3, 0, Math.PI * 2);
-  ctx.ellipse(x + size*0.72, y + size*0.2, size*0.15, size*0.3, 0.3, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-  bunnyMaskTexture.needsUpdate = true;
-}
-
-function render() {
+function render(){
   if (moonGroup && moonRotate) moonGroup.rotation.y += 0.003;
 
-  if (bunnySprite && !bunnyTouched) {
-    const cam = getCameraForRaycast();
-    raycaster.setFromCamera({x:0, y:0}, cam);
-
-    if (renderer.xr.isPresenting) {
-      const origin = new THREE.Vector3();
-      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
-      controller.getWorldPosition(origin);
-      raycaster.set(origin, dir);
-    }
-
-    // 달 표면에 닿은 위치 계산
-    const intersectsMoon = raycaster.intersectObject(moon);
-    if (intersectsMoon.length > 0) {
-      const hit = intersectsMoon[0];
+  if (bunnySprite && !bunnyTouched){
+    raycaster.setFromCamera({x:0,y:0}, camera);
+    const hit = raycaster.intersectObject(bunnySprite);
+    if (hit.length){
       bunnyTouched = true;
-
-      // 토끼 위치를 달 표면에 고정
-      bunnySprite.position.copy(hit.point);
-
-      // 법선 방향을 향하게 (달 표면의 정면 방향)
-      const normal = hit.face.normal.clone().transformDirection(moon.matrixWorld);
-      const lookPos = hit.point.clone().add(normal);
-      bunnySprite.lookAt(lookPos);
-
-      // 달 회전 멈춤
-      moonRotate = false;
-
-      startDrawAnimation(hit.uv);
-
       scene.remove(bunnySprite);
-      bunnySprite = null;
+
+      const moonHit = raycaster.intersectObject(moon)[0];
+      if (moonHit){
+        moonRotate = false;
+        startLineDraw(moonHit.uv);
+      }
     }
   }
 
-  if (drawAnimation) drawAnimation();
-
-  if (moonGroup && phase === 2 && eclipseProgress < 1) {
+  if (phase === 2 && eclipseProgress < 1){
     eclipseProgress += 0.003;
-    moon.material.uniforms.eclipse.value = eclipseProgress * 2.0;
-    glow.material.opacity = THREE.MathUtils.lerp(0.45, 0.12, eclipseProgress);
+    moon.material.uniforms.eclipse.value = eclipseProgress * 2;
   }
 
+  drawLineStep();
   renderer.render(scene, camera);
 }
 
-function startDrawAnimation(uv) {
-  let progress = 0;
-  drawAnimation = () => {
-    progress += 0.02;
-    if (progress >= 1) {
-      progress = 1;
-      drawAnimation = null;
-      // 2번: 그려진 후 달이 다시 회전 시작
-      moonRotate = true;
-    }
-    drawBunnyOnMoonMask(uv, progress);
-  };
-}
-
-function createMoon() {
+function createMoon(){
   const loader = new THREE.TextureLoader();
   moonGroup = new THREE.Group();
 
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      map: { value: loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg') },
-      maskMap: { value: bunnyMaskTexture },
-      eclipse: { value: 0.0 },
-      eclipseActive: { value: false },
-      phase: { value: 0.0 }
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{
+      map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
+      lineMap:{value:lineTexture},
+      eclipse:{value:0},
+      eclipseActive:{value:false},
+      phase:{value:0}
     },
-    vertexShader: `
+    vertexShader:`
       varying vec2 vUv;
       varying vec3 vNormal;
-      void main() {
-        vUv = uv;
-        vNormal = normalize(normalMatrix * normal);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      void main(){
+        vUv=uv;
+        vNormal=normalize(normalMatrix*normal);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
       }
     `,
-    fragmentShader: `
+    fragmentShader:`
       uniform sampler2D map;
-      uniform sampler2D maskMap;
+      uniform sampler2D lineMap;
       uniform float eclipse;
       uniform bool eclipseActive;
       uniform float phase;
       varying vec2 vUv;
       varying vec3 vNormal;
-
-      void main() {
-        vec3 base = texture2D(map, vUv).rgb;
-
-        float luma = dot(base, vec3(0.299, 0.587, 0.114));
-        base = mix(vec3(luma), base, 1.4);
-        base = pow(base, vec3(0.75));
-
-        vec3 color = base * vec3(1.2, 1.15, 0.95);
-
-        float light = dot(normalize(vNormal), vec3(0.15, 0.0, 1.0));
-        light = clamp(light, 0.6, 1.0);
-        color *= light;
-
-        if (eclipseActive) {
-          float edge = smoothstep(-1.0 + eclipse, -0.2 + eclipse, vNormal.x);
-          color *= mix(0.3, 1.0, edge);
+      void main(){
+        vec3 c=texture2D(map,vUv).rgb;
+        c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
+        if(eclipseActive){
+          float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
+          c*=mix(0.3,1.,e);
         }
-
-        if (phase > 1.5) {
-          color = base * vec3(1.2, 0.6, 0.55);
-        }
-
-        vec4 mask = texture2D(maskMap, vUv);
-        if (mask.r < 0.5) {
-          color = mix(color, vec3(1.2, 0.8, 0.6), 0.9);
-        }
-
-        gl_FragColor = vec4(color, 1.0);
+        if(phase>1.5) c=vec3(c.r*1.2,c.g*0.6,c.b*0.55);
+        vec4 line=texture2D(lineMap,vUv);
+        c=mix(c,vec3(1.3,1.0,0.7),line.r);
+        gl_FragColor=vec4(c,1.);
       }
     `
   });
 
-  moon = new THREE.Mesh(new THREE.SphereGeometry(0.15, 64, 64), material);
+  moon = new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64), mat);
   moonGroup.add(moon);
-
-  glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: loader.load('https://threejs.org/examples/textures/sprites/glow.png'),
-    color: 0xffe3a0,
-    transparent: true,
-    opacity: 0.45
-  }));
-  glow.scale.set(0.6,0.6,1);
-  moonGroup.add(glow);
 
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
@@ -438,27 +264,11 @@ function createMoon() {
   scene.add(moonGroup);
 }
 
-function cleanupMoon() {
-  if (!moonGroup) return;
-
-  moonGroup.traverse(o => {
-    if (o.geometry) o.geometry.dispose();
-    if (o.material) o.material.dispose();
-  });
-
-  scene.remove(moonGroup);
-  moonGroup = null;
-  phase = 0;
-  moonRotate = true;
-  status.innerText = "AR 종료됨";
-  btnEnd.style.display = 'none';
-
-  if (bunnySprite) {
-    scene.remove(bunnySprite);
-    bunnySprite = null;
-  }
-  bunnySpawned = false;
-  bunnyTouched = false;
+function cleanup(){
+  phase=0;
+  bunnyEverAppeared=false;
+  bunnyTouched=false;
+  status.innerText="AR 종료됨";
 }
 
 btnEnd.onclick = () => {
