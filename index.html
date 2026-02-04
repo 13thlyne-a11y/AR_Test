@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebXR AR 보름달 + 토끼 (완성)</title>
+  <title>WebXR AR 보름달 + 토끼 (최종)</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #ui {
@@ -59,11 +59,12 @@ const btnGuide = document.getElementById('btnGuide');
 const btnEnd = document.getElementById('btnEnd');
 
 const raycaster = new THREE.Raycaster();
-let bunnySprite = null; // 🐰 토끼는 1개만
+let bunnySprite = null; // 토끼 1개만
 let bunnyTexture, bunnyMaskCanvas, bunnyMaskTexture;
 let drawAnimation = null;
 
 let arBtn;
+let ignoreTouchUntil = 0; // 달 생성 직후 터치 무시 시간
 
 init();
 
@@ -96,11 +97,10 @@ function init() {
 
   window.addEventListener('pointerdown', onPointerDown);
 
-  bunnyTexture = createBunnyTexture('#ff8ab8', true);
+  bunnyTexture = createFullBodyBunnyTexture('#ff8ab8', true);
 
   bunnyMaskCanvas = document.createElement('canvas');
   bunnyMaskCanvas.width = bunnyMaskCanvas.height = 1024;
-
   const ctx = bunnyMaskCanvas.getContext('2d');
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, 1024, 1024);
@@ -110,28 +110,28 @@ function init() {
 }
 
 function getCameraForRaycast() {
-  // XR 모드에서 camera는 ArrayCamera
   const xrCamera = renderer.xr.getCamera(camera);
   if (xrCamera.isArrayCamera) return xrCamera.cameras[0];
   return xrCamera;
 }
 
 function onPointerDown(event) {
-  // AR 버튼 클릭은 무시
   if (event.target === arBtn) return;
+
+  // 달 생성 직후 300ms 동안은 터치 무시
+  if (performance.now() < ignoreTouchUntil) return;
 
   const x = (event.clientX / window.innerWidth) * 2 - 1;
   const y = -(event.clientY / window.innerHeight) * 2 + 1;
-
   const cam = getCameraForRaycast();
 
-  // AR 모드에서도 raycast 처리
   raycaster.setFromCamera({x, y}, cam);
 
   if (phase === 0) {
     createMoon();
     phase = 1;
     status.innerText = "🌕 노란 보름달";
+    ignoreTouchUntil = performance.now() + 300; // 300ms 터치 무시
     return;
   }
 
@@ -150,6 +150,9 @@ function onPointerDown(event) {
 }
 
 function onSelectXR() {
+  // XR 모드에서도 동일하게 300ms 터치 무시
+  if (performance.now() < ignoreTouchUntil) return;
+
   const origin = new THREE.Vector3();
   const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
   controller.getWorldPosition(origin);
@@ -159,6 +162,7 @@ function onSelectXR() {
     createMoon();
     phase = 1;
     status.innerText = "🌕 노란 보름달";
+    ignoreTouchUntil = performance.now() + 300;
     return;
   }
 
@@ -199,7 +203,9 @@ function spawnBunnyAtCameraForward() {
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
   bunnySprite.position.copy(camera.position).add(dir.multiplyScalar(1.0));
-  bunnySprite.scale.set(1.0, 1.0, 1); // 전체 토끼가 보이도록 조정
+
+  // 달 크기와 동일하게 맞춤 (달 radius 0.15이므로 스프라이트 0.3)
+  bunnySprite.scale.set(0.3, 0.3, 1);
   scene.add(bunnySprite);
 }
 
@@ -213,8 +219,8 @@ function createBunnySprite() {
   return sprite;
 }
 
-function createBunnyTexture(color, colored = true) {
-  const size = 256;
+function createFullBodyBunnyTexture(color, colored = true) {
+  const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -223,40 +229,45 @@ function createBunnyTexture(color, colored = true) {
   // 몸통
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(128, 150, 60, 70, 0, 0, Math.PI * 2);
+  ctx.ellipse(256, 320, 110, 140, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 머리
+  ctx.beginPath();
+  ctx.ellipse(256, 190, 90, 90, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // 귀
   ctx.beginPath();
-  ctx.ellipse(90, 70, 25, 60, -0.3, 0, Math.PI * 2);
+  ctx.ellipse(180, 90, 40, 120, -0.3, 0, Math.PI * 2);
   ctx.fill();
   ctx.beginPath();
-  ctx.ellipse(166, 70, 25, 60, 0.3, 0, Math.PI * 2);
+  ctx.ellipse(332, 90, 40, 120, 0.3, 0, Math.PI * 2);
   ctx.fill();
 
   // 눈
   ctx.fillStyle = '#000';
   ctx.beginPath();
-  ctx.arc(115, 150, 6, 0, Math.PI * 2);
+  ctx.arc(230, 190, 12, 0, Math.PI * 2);
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(141, 150, 6, 0, Math.PI * 2);
+  ctx.arc(282, 190, 12, 0, Math.PI * 2);
   ctx.fill();
 
   // 코
   ctx.fillStyle = '#ff5a8a';
   ctx.beginPath();
-  ctx.arc(128, 170, 8, 0, Math.PI * 2);
+  ctx.arc(256, 220, 10, 0, Math.PI * 2);
   ctx.fill();
 
   // 볼
   if (colored) {
     ctx.fillStyle = 'rgba(255, 140, 200, 0.7)';
     ctx.beginPath();
-    ctx.arc(110, 170, 10, 0, Math.PI * 2);
+    ctx.arc(216, 220, 18, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(146, 170, 10, 0, Math.PI * 2);
+    ctx.arc(296, 220, 18, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -265,7 +276,7 @@ function createBunnyTexture(color, colored = true) {
 
 function drawBunnyOnMoonMask(uv, alpha) {
   const ctx = bunnyMaskCanvas.getContext('2d');
-  const size = 180;
+  const size = 220;
   const x = uv.x * bunnyMaskCanvas.width - size / 2;
   const y = (1 - uv.y) * bunnyMaskCanvas.height - size / 2;
 
@@ -289,9 +300,8 @@ function render() {
 
   // 토끼 터치 감지
   if (bunnySprite) {
-    // XR / non-XR 모두 대응
     const cam = getCameraForRaycast();
-    raycaster.setFromCamera({x:0, y:0}, cam); // 기본값
+    raycaster.setFromCamera({x:0, y:0}, cam);
     if (renderer.xr.isPresenting) {
       const origin = new THREE.Vector3();
       const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
@@ -301,7 +311,6 @@ function render() {
 
     const intersects = raycaster.intersectObject(bunnySprite);
     if (intersects.length > 0) {
-      // 토끼가 정면을 향하도록 위치 고정
       bunnySprite.lookAt(camera.position);
       bunnySprite.position.copy(intersects[0].point);
 
@@ -312,7 +321,6 @@ function render() {
     }
   }
 
-  // 그리기 애니메이션 실행
   if (drawAnimation) drawAnimation();
 
   if (moonGroup && phase === 2 && eclipseProgress < 1) {
