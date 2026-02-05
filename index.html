@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon + Bunny (Final)</title>
+<title>WebXR AR Moon + Bunny (Fixed Logic)</title>
 <style>
 body { margin:0; overflow:hidden; }
 #ui {
@@ -89,7 +89,6 @@ function init(){
 }
 
 function onSelect(){
-  raycaster.setFromCamera({x:0,y:0}, camera);
 
   // 1️⃣ 첫 탭 → 달 생성
   if (phase === 0){
@@ -99,8 +98,10 @@ function onSelect(){
     return;
   }
 
-  // 2️⃣ 달 중앙 탭
+  // 2️⃣ 달 상호작용 (중앙 기준)
+  raycaster.setFromCamera({x:0,y:0}, camera);
   const hitMoon = raycaster.intersectObject(moon);
+
   if (hitMoon.length){
     if (phase === 1){
       phase = 2;
@@ -115,8 +116,8 @@ function onSelect(){
     return;
   }
 
-  // 3️⃣ 달이 아닐 때 토끼 등장 (1회)
-  if (!bunnyAppeared){
+  // 3️⃣ 달 상태와 무관하게, 달이 존재하고 토끼가 없으면 1회 등장
+  if (moon && !bunnyAppeared){
     spawnBunny();
     bunnyAppeared = true;
     status.innerText = "🐇 토끼가 나타났어요!";
@@ -129,6 +130,7 @@ function spawnBunny(){
     new THREE.SpriteMaterial({ map: tex, transparent:true })
   );
   bunnySprite.scale.set(0.3,0.3,1);
+  bunnySprite.renderOrder = 10;
 
   const cam = renderer.xr.getCamera(camera);
   const dir = new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
@@ -138,8 +140,12 @@ function spawnBunny(){
 }
 
 function startBunnyLineAnimation(){
+
+  // 🌍 현재 사용자가 보고 있는 달 정면 고정
+  const cam = renderer.xr.getCamera(camera);
+  moonGroup.lookAt(cam.position);
+
   moonRotate = false;
-  moonGroup.rotation.y = 0;
 
   const uvPath = [
     [0.55,0.55],[0.57,0.6],[0.6,0.62],[0.63,0.6],
@@ -162,7 +168,7 @@ function startBunnyLineAnimation(){
 
   bunnyLine = new THREE.Line(
     geo,
-    new THREE.LineBasicMaterial({color:0xffffff})
+    new THREE.LineBasicMaterial({ color: 0xffffff })
   );
 
   moonGroup.add(bunnyLine);
@@ -265,7 +271,6 @@ btnGuide.onclick = ()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n" +
     "• 캡처: 전원 + 볼륨 하단\n" +
-    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n" +
     "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
     "웹 AR은 브라우저 합성 화면이므로\n" +
     "웹에서 직접 저장은 불가능합니다."
