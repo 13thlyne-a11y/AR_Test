@@ -3,17 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon (Fixed)</title>
+<title>WebXR AR Moon + Bunny (Final)</title>
 <style>
 body { margin:0; overflow:hidden; }
 #ui {
   position:fixed;
   top:10px; left:10px;
   z-index:9999;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
 }
-#status {
+#status, button {
   background:rgba(0,0,0,0.7);
   color:#fff;
+  border:none;
   border-radius:6px;
   padding:8px 12px;
   font-size:14px;
@@ -28,6 +32,7 @@ body { margin:0; overflow:hidden; }
 <body>
 <div id="ui">
   <div id="status">AR 버튼을 눌러 시작하세요.</div>
+  <button id="btnGuide">📸 캡처/녹화 방법 안내</button>
 </div>
 
 <script type="module">
@@ -37,34 +42,38 @@ import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARB
 let scene, camera, renderer;
 let moon, moonGroup;
 let phase = 0;
+let eclipseProgress = 0;
+let moonRotate = true;
 
+let bunnySprite = null;
+let bunnyAppeared = false;
+let bunnyTouched = false;
+
+let bunnyLine = null;
+let drawingBunny = false;
+let bunnyDrawProgress = 0;
+
+const raycaster = new THREE.Raycaster();
 const status = document.getElementById('status');
+const btnGuide = document.getElementById('btnGuide');
 
 init();
 
 function init(){
   scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
 
-  camera = new THREE.PerspectiveCamera(
-    70,
-    window.innerWidth / window.innerHeight,
-    0.01,
-    20
-  );
-
-  renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+  renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // ✅ ARButton (필수 옵션 포함)
   const arBtn = ARButton.createButton(renderer, {
     requiredFeatures: ['local-floor']
   });
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
-  // ✅ XR Controller (화면 터치)
   const controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
   scene.add(controller);
@@ -75,64 +84,193 @@ function init(){
     status.innerText = "화면을 탭하면 보름달이 나타납니다 🌕";
   });
 
-  renderer.xr.addEventListener('sessionend', ()=>{
-    status.innerText = "AR 종료됨";
-    cleanup();
-  });
-
+  renderer.xr.addEventListener('sessionend', cleanup);
   renderer.setAnimationLoop(render);
 }
 
 function onSelect(){
-  // ✅ 첫 탭 → 달 생성
+  raycaster.setFromCamera({x:0,y:0}, camera);
+
+  // 1️⃣ 첫 탭 → 달 생성
   if (phase === 0){
     createMoon();
     phase = 1;
     status.innerText = "🌕 노란 보름달";
+    return;
   }
+
+  // 2️⃣ 달 중앙 탭
+  const hitMoon = raycaster.intersectObject(moon);
+  if (hitMoon.length){
+    if (phase === 1){
+      phase = 2;
+      eclipseProgress = 0;
+      moon.material.uniforms.eclipseActive.value = true;
+      status.innerText = "🌘 월식";
+    } else if (phase === 2){
+      phase = 3;
+      moon.material.uniforms.phase.value = 2.0;
+      status.innerText = "🌑 붉은 달";
+    }
+    return;
+  }
+
+  // 3️⃣ 달이 아닐 때 토끼 등장 (1회)
+  if (!bunnyAppeared){
+    spawnBunny();
+    bunnyAppeared = true;
+    status.innerText = "🐇 토끼가 나타났어요!";
+  }
+}
+
+function spawnBunny(){
+  const tex = new THREE.TextureLoader().load('https://i.imgur.com/9WfhK7C.png');
+  bunnySprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: tex, transparent:true })
+  );
+  bunnySprite.scale.set(0.3,0.3,1);
+
+  const cam = renderer.xr.getCamera(camera);
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
+  bunnySprite.position.copy(cam.position).add(dir.multiplyScalar(1));
+
+  scene.add(bunnySprite);
+}
+
+function startBunnyLineAnimation(){
+  moonRotate = false;
+  moonGroup.rotation.y = 0;
+
+  const uvPath = [
+    [0.55,0.55],[0.57,0.6],[0.6,0.62],[0.63,0.6],
+    [0.65,0.55],[0.62,0.52],[0.58,0.52],[0.55,0.55]
+  ];
+
+  const points = uvPath.map(([u,v])=>{
+    const phi = (1-v)*Math.PI;
+    const theta = u*Math.PI*2;
+    const r = 0.151;
+    return new THREE.Vector3(
+      r*Math.sin(phi)*Math.cos(theta),
+      r*Math.cos(phi),
+      r*Math.sin(phi)*Math.sin(theta)
+    );
+  });
+
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  geo.setDrawRange(0,0);
+
+  bunnyLine = new THREE.Line(
+    geo,
+    new THREE.LineBasicMaterial({color:0xffffff})
+  );
+
+  moonGroup.add(bunnyLine);
+  bunnyDrawProgress = 0;
+  drawingBunny = true;
+}
+
+function render(){
+  if (moonGroup && moonRotate) moonGroup.rotation.y += 0.003;
+
+  if (bunnySprite && !bunnyTouched){
+    raycaster.setFromCamera({x:0,y:0}, camera);
+    if (raycaster.intersectObject(bunnySprite).length){
+      bunnyTouched = true;
+      scene.remove(bunnySprite);
+      startBunnyLineAnimation();
+    }
+  }
+
+  if (drawingBunny && bunnyLine){
+    bunnyDrawProgress += 0.5;
+    bunnyLine.geometry.setDrawRange(0, bunnyDrawProgress);
+    if (bunnyDrawProgress >= bunnyLine.geometry.attributes.position.count){
+      drawingBunny = false;
+      moonRotate = true;
+      status.innerText = "🌕 달이 다시 회전합니다";
+    }
+  }
+
+  if (phase === 2 && eclipseProgress < 1){
+    eclipseProgress += 0.003;
+    moon.material.uniforms.eclipse.value = eclipseProgress * 2;
+  }
+
+  renderer.render(scene, camera);
 }
 
 function createMoon(){
   const loader = new THREE.TextureLoader();
   moonGroup = new THREE.Group();
 
-  const mat = new THREE.MeshStandardMaterial({
-    map: loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg'),
-    color: 0xfff2cc
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{
+      map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
+      eclipse:{value:0},
+      eclipseActive:{value:false},
+      phase:{value:0}
+    },
+    vertexShader:`
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main(){
+        vUv=uv;
+        vNormal=normalize(normalMatrix*normal);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+      }
+    `,
+    fragmentShader:`
+      uniform sampler2D map;
+      uniform float eclipse;
+      uniform bool eclipseActive;
+      uniform float phase;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main(){
+        vec3 c=texture2D(map,vUv).rgb;
+        c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
+        if(eclipseActive){
+          float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
+          c*=mix(0.3,1.,e);
+        }
+        if(phase>1.5){
+          c=vec3(c.r*1.2,c.g*0.6,c.b*0.55);
+        }
+        gl_FragColor=vec4(c,1.);
+      }
+    `
   });
 
-  moon = new THREE.Mesh(
-    new THREE.SphereGeometry(0.15, 64, 64),
-    mat
-  );
-
+  moon = new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64), mat);
   moonGroup.add(moon);
 
-  // ✅ XR 카메라 기준 위치 계산
-  const xrCam = renderer.xr.getCamera(camera);
-
-  const dir = new THREE.Vector3(0, 0, -1)
-    .applyQuaternion(xrCam.quaternion);
-
-  moonGroup.position
-    .copy(xrCam.position)
-    .add(dir.multiplyScalar(1));
+  const cam = renderer.xr.getCamera(camera);
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
+  moonGroup.position.copy(cam.position).add(dir.multiplyScalar(1));
 
   scene.add(moonGroup);
 }
 
-function render(){
-  if (moonGroup){
-    moonGroup.rotation.y += 0.003;
-  }
-  renderer.render(scene, camera);
-}
-
 function cleanup(){
   if (moonGroup) scene.remove(moonGroup);
-  moonGroup = moon = null;
+  if (bunnySprite) scene.remove(bunnySprite);
+  moonGroup = moon = bunnySprite = bunnyLine = null;
   phase = 0;
+  bunnyAppeared = bunnyTouched = drawingBunny = false;
+  status.innerText = "AR 종료됨";
 }
+
+btnGuide.onclick = ()=>{
+  alert(
+    "📸 AR 화면 캡처/녹화 안내\n\n" +
+    "• 캡처: 전원 + 볼륨 하단\n" +
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n" +
+    "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
+    "웹 AR은 브라우저 합성 화면이므로\n" +
+    "웹에서 직접 저장은 불가능합니다."
+  );
+};
 </script>
 </body>
 </html>
