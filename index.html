@@ -72,6 +72,10 @@ function init(){
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
+  const controller = renderer.xr.getController(0);
+  controller.addEventListener('select', onTap);
+  scene.add(controller);
+
   scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
 
   renderer.xr.addEventListener('sessionstart', ()=>{
@@ -79,13 +83,12 @@ function init(){
   });
 
   renderer.xr.addEventListener('sessionend', cleanup);
-
-  renderer.domElement.addEventListener('pointerdown', onTap);
-  renderer.domElement.addEventListener('touchstart', onTap);
-  renderer.setAnimationLoop(render);
 }
 
 function onTap(){
+  console.log("XR SELECT");
+  status.innerText = "탭 인식됨!";
+  
   // 중앙 포인터 기반 ray
   raycaster.setFromCamera({x:0,y:0}, camera);
 
