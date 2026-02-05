@@ -80,7 +80,8 @@ function init(){
 
   renderer.xr.addEventListener('sessionend', cleanup);
 
-  renderer.domElement.addEventListener('click', onTap);
+  renderer.domElement.addEventListener('pointerdown', onTap);
+  renderer.domElement.addEventListener('touchstart', onTap);
   renderer.setAnimationLoop(render);
 }
 
