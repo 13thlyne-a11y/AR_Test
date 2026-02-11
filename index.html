@@ -3,18 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon + Bunny (Fixed Logic)</title>
+<title>WebXR AR Moon + Bunny Particle</title>
 <style>
 body { margin:0; overflow:hidden; }
-#ui {
+
+#ui{
   position:fixed;
-  top:10px; left:10px;
+  top:10px;
+  left:10px;
   z-index:9999;
   display:flex;
   flex-direction:column;
   gap:8px;
 }
-#status, button {
+
+#status, button{
   background:rgba(0,0,0,0.7);
   color:#fff;
   border:none;
@@ -22,7 +25,8 @@ body { margin:0; overflow:hidden; }
   padding:8px 12px;
   font-size:14px;
 }
-.ar-button {
+
+.ar-button{
   background:rgba(0,0,0,0.85)!important;
   border:1px solid rgba(255,255,255,0.5)!important;
 }
@@ -30,6 +34,7 @@ body { margin:0; overflow:hidden; }
 </head>
 
 <body>
+
 <div id="ui">
   <div id="status">AR 버튼을 눌러 시작하세요.</div>
   <button id="btnGuide">📸 캡처/녹화 방법 안내</button>
@@ -41,23 +46,18 @@ import { ARButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/ARB
 
 let scene, camera, renderer;
 let moon, moonGroup;
+let bunnySprite = null;
+let bunnyLine = null;
+
 let phase = 0;
 let eclipseProgress = 0;
-let moonRotate = true;
 
-let bunnySprite = null;
-let bunnyAppeared = false;
-let bunnyTouched = false;
+let particles = [];
+let raycaster = new THREE.Raycaster();
+let lastPointer = {x:0,y:0,time:0};
 
-let bunnyLine = null;
-let drawingBunny = false;
-let bunnyDrawProgress = 0;
-
-const raycaster = new THREE.Raycaster();
-const status = document.getElementById('status');
-const btnGuide = document.getElementById('btnGuide');
-
-let lastPointer = { x: 0, y: 0, time: 0 };
+const status = document.getElementById("status");
+const btnGuide = document.getElementById("btnGuide");
 
 init();
 
@@ -70,180 +70,84 @@ function init(){
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  const arBtn = ARButton.createButton(renderer, {
-    requiredFeatures: ['local-floor']
-  });
+  const arBtn = ARButton.createButton(renderer,{requiredFeatures:['local-floor']});
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
-  // 📌 포인터 좌표 저장 (달 탭 판정용)
-  renderer.domElement.addEventListener('pointerup', (e) => {
+  renderer.domElement.addEventListener('pointerup', e=>{
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
     lastPointer.time = performance.now();
   });
 
   const controller = renderer.xr.getController(0);
-  controller.addEventListener('select', onSelect);
+  controller.addEventListener("select", onSelect);
   scene.add(controller);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.1));
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
-  renderer.xr.addEventListener('sessionstart', ()=>{
-    status.innerText = "화면을 탭하면 보름달이 나타납니다 🌕";
+  renderer.xr.addEventListener('sessionstart',()=>{
+    status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
   });
 
-  renderer.xr.addEventListener('sessionend', cleanup);
   renderer.setAnimationLoop(render);
 }
 
 function onSelect(){
 
-  // 1️⃣ 첫 탭 → 달 생성
-  if (phase === 0){
+  if(phase===0){
     createMoon();
-    phase = 1;
-    status.innerText = "🌕 노란 보름달";
-    return;
-  }
-
-  // 마지막 터치가 최근인지 확인 (XR에서 select와 pointer가 동시에 안 날 수 있음)
-  const now = performance.now();
-  const usePointer = (now - lastPointer.time < 200);
-
-  // 화면 좌표를 NDC로 변환
-  const x = usePointer ? (lastPointer.x / window.innerWidth) * 2 - 1 : 0;
-  const y = usePointer ? -(lastPointer.y / window.innerHeight) * 2 + 1 : 0;
-
-  // 달을 탭했는지 체크
-  raycaster.setFromCamera({ x, y }, camera);
-  const hitMoon = raycaster.intersectObject(moon);
-
-  // 2️⃣ 달 상호작용 (달을 탭했을 때만)
-  if (hitMoon.length){
-
-    // ⭐ 반짝임 효과 시작
-    moon.material.uniforms.blink.value = 1.0;
-
-    if (phase === 1){
-      phase = 2;
-      eclipseProgress = 0;
-      moon.material.uniforms.eclipseActive.value = true;
-      status.innerText = "🌘 월식";
-    } else if (phase === 2){
-      phase = 3;
-      moon.material.uniforms.phase.value = 2.0;
-      status.innerText = "🌑 붉은 달";
-    }
-    return;
-  }
-
-  // 3️⃣ 달 상태와 무관하게, 달이 존재하고 토끼가 없으면 1회 등장
-  if (moon && !bunnyAppeared){
     spawnBunny();
-    bunnyAppeared = true;
-    status.innerText = "🐇 토끼가 나타났어요!";
+    phase=1;
+    status.innerText="🌕 달과 토끼가 나타났어요!";
+    return;
   }
-}
 
-function spawnBunny(){
-  const tex = new THREE.TextureLoader().load('https://i.imgur.com/9WfhK7C.png');
-  bunnySprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: tex, transparent:true })
-  );
-  bunnySprite.scale.set(0.3,0.3,1);
-  bunnySprite.renderOrder = 10;
+  const now=performance.now();
+  const usePointer=(now-lastPointer.time<200);
+  const x=usePointer?(lastPointer.x/window.innerWidth)*2-1:0;
+  const y=usePointer?-(lastPointer.y/window.innerHeight)*2+1:0;
 
-  const cam = renderer.xr.getCamera(camera);
-  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
-  bunnySprite.position.copy(cam.position).add(dir.multiplyScalar(1));
+  raycaster.setFromCamera({x,y},camera);
 
-  scene.add(bunnySprite);
-}
+  // 🐇 토끼 터치
+  if(bunnySprite && raycaster.intersectObject(bunnySprite).length){
+    scene.remove(bunnySprite);
+    bunnySprite=null;
+    drawBunnyOnMoon();
+    status.innerText="🐇 달에 토끼가 그려졌어요!";
+    return;
+  }
 
-function startBunnyLineAnimation(){
+  // 🌕 달 터치
+  if(moon && raycaster.intersectObject(moon).length){
 
-  // 🌍 현재 사용자가 보고 있는 달 정면 고정
-  const cam = renderer.xr.getCamera(camera);
-  moonGroup.lookAt(cam.position);
+    createParticles(moonGroup.position);
 
-  moonRotate = false;
-
-  const uvPath = [
-    [0.55,0.55],[0.57,0.6],[0.6,0.62],[0.63,0.6],
-    [0.65,0.55],[0.62,0.52],[0.58,0.52],[0.55,0.55]
-  ];
-
-  const points = uvPath.map(([u,v])=>{
-    const phi = (1-v)*Math.PI;
-    const theta = u*Math.PI*2;
-    const r = 0.151;
-    return new THREE.Vector3(
-      r*Math.sin(phi)*Math.cos(theta),
-      r*Math.cos(phi),
-      r*Math.sin(phi)*Math.sin(theta)
-    );
-  });
-
-  const geo = new THREE.BufferGeometry().setFromPoints(points);
-  geo.setDrawRange(0,0);
-
-  bunnyLine = new THREE.Line(
-    geo,
-    new THREE.LineBasicMaterial({ color: 0xffffff })
-  );
-
-  moonGroup.add(bunnyLine);
-  bunnyDrawProgress = 0;
-  drawingBunny = true;
-}
-
-function render(){
-  if (moonGroup && moonRotate) moonGroup.rotation.y += 0.003;
-
-  if (bunnySprite && !bunnyTouched){
-    raycaster.setFromCamera({x:0,y:0}, camera);
-    if (raycaster.intersectObject(bunnySprite).length){
-      bunnyTouched = true;
-      scene.remove(bunnySprite);
-      startBunnyLineAnimation();
+    if(phase===1){
+      phase=2;
+      eclipseProgress=0;
+      moon.material.uniforms.eclipseActive.value=true;
+      status.innerText="🌘 월식 시작!";
+    }
+    else if(phase===2){
+      phase=3;
+      moon.material.uniforms.phase.value=2.0;
+      status.innerText="🌑 붉은 달!";
     }
   }
-
-  if (drawingBunny && bunnyLine){
-    bunnyDrawProgress += 0.5;
-    bunnyLine.geometry.setDrawRange(0, bunnyDrawProgress);
-    if (bunnyDrawProgress >= bunnyLine.geometry.attributes.position.count){
-      drawingBunny = false;
-      moonRotate = true;
-      status.innerText = "🌕 달이 다시 회전합니다";
-    }
-  }
-
-  // 🌟 반짝임 감소 처리
-  if (moon && moon.material.uniforms.blink.value > 0){
-    moon.material.uniforms.blink.value *= 0.9; // 점점 감소
-  }
-
-  if (phase === 2 && eclipseProgress < 1){
-    eclipseProgress += 0.003;
-    moon.material.uniforms.eclipse.value = eclipseProgress * 2;
-  }
-
-  renderer.render(scene, camera);
 }
 
 function createMoon(){
-  const loader = new THREE.TextureLoader();
-  moonGroup = new THREE.Group();
+  const loader=new THREE.TextureLoader();
+  moonGroup=new THREE.Group();
 
-  const mat = new THREE.ShaderMaterial({
+  const mat=new THREE.ShaderMaterial({
     uniforms:{
       map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
       eclipse:{value:0},
       eclipseActive:{value:false},
-      phase:{value:0},
-      blink:{value:0} // ⭐ 반짝임 추가
+      phase:{value:0}
     },
     vertexShader:`
       varying vec2 vUv;
@@ -259,16 +163,11 @@ function createMoon(){
       uniform float eclipse;
       uniform bool eclipseActive;
       uniform float phase;
-      uniform float blink; // ⭐ 반짝임 uniform
       varying vec2 vUv;
       varying vec3 vNormal;
       void main(){
         vec3 c=texture2D(map,vUv).rgb;
         c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
-
-        // ⭐ 반짝임 효과: 밝기 증가
-        c += blink * 0.5;
-
         if(eclipseActive){
           float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
           c*=mix(0.3,1.,e);
@@ -281,33 +180,109 @@ function createMoon(){
     `
   });
 
-  moon = new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64), mat);
+  moon=new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64),mat);
   moonGroup.add(moon);
 
-  const cam = renderer.xr.getCamera(camera);
-  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
-  moonGroup.position.copy(cam.position).add(dir.multiplyScalar(1));
+  const cam=renderer.xr.getCamera(camera);
+  const dir=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
+  moonGroup.position.copy(cam.position).add(dir.multiplyScalar(1.5));
 
   scene.add(moonGroup);
 }
 
-function cleanup(){
-  if (moonGroup) scene.remove(moonGroup);
-  if (bunnySprite) scene.remove(bunnySprite);
-  moonGroup = moon = bunnySprite = bunnyLine = null;
-  phase = 0;
-  bunnyAppeared = bunnyTouched = drawingBunny = false;
-  status.innerText = "AR 종료됨";
+function spawnBunny(){
+  const tex=new THREE.TextureLoader().load('https://i.imgur.com/9WfhK7C.png');
+  bunnySprite=new THREE.Sprite(
+    new THREE.SpriteMaterial({map:tex,transparent:true})
+  );
+  bunnySprite.scale.set(0.4,0.4,1);
+
+  const side=Math.random()<0.5?-1:1;
+  bunnySprite.position.copy(moonGroup.position)
+    .add(new THREE.Vector3(side*1,0,0));
+
+  scene.add(bunnySprite);
 }
 
-btnGuide.onclick = ()=>{
+function drawBunnyOnMoon(){
+  const points=[
+    new THREE.Vector3(0.02,0.03,0.16),
+    new THREE.Vector3(0.05,0.07,0.16),
+    new THREE.Vector3(0.08,0.03,0.16),
+    new THREE.Vector3(0.05,0.0,0.16),
+    new THREE.Vector3(0.02,0.03,0.16)
+  ];
+  const geo=new THREE.BufferGeometry().setFromPoints(points);
+  bunnyLine=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xffffff}));
+  moonGroup.add(bunnyLine);
+}
+
+function createParticles(position){
+  const geometry=new THREE.BufferGeometry();
+  const count=60;
+  const positions=[];
+  const velocities=[];
+
+  for(let i=0;i<count;i++){
+    positions.push(position.x,position.y,position.z);
+    velocities.push(
+      (Math.random()-0.5)*0.05,
+      (Math.random()-0.5)*0.05,
+      (Math.random()-0.5)*0.05
+    );
+  }
+
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  const material=new THREE.PointsMaterial({
+    color:0xffffff,
+    size:0.03,
+    transparent:true,
+    opacity:1
+  });
+
+  const points=new THREE.Points(geometry,material);
+  points.userData={velocities,life:1};
+  scene.add(points);
+  particles.push(points);
+}
+
+function updateParticles(){
+  particles.forEach((p,i)=>{
+    const pos=p.geometry.attributes.position.array;
+    const vel=p.userData.velocities;
+    for(let j=0;j<vel.length/3;j++){
+      pos[j*3]+=vel[j*3];
+      pos[j*3+1]+=vel[j*3+1];
+      pos[j*3+2]+=vel[j*3+2];
+    }
+    p.geometry.attributes.position.needsUpdate=true;
+    p.userData.life-=0.02;
+    p.material.opacity=p.userData.life;
+    if(p.userData.life<=0){
+      scene.remove(p);
+      particles.splice(i,1);
+    }
+  });
+}
+
+function render(){
+  if(phase===2 && eclipseProgress<1){
+    eclipseProgress+=0.003;
+    moon.material.uniforms.eclipse.value=eclipseProgress*2;
+  }
+
+  updateParticles();
+  renderer.render(scene,camera);
+}
+
+btnGuide.onclick=()=>{
   alert(
-    "📸 AR 화면 캡처/녹화 안내\n\n" +
-    "• 캡처: 전원 + 볼륨 하단\n" +
-    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n" +
-    "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
-    "웹 AR은 브라우저 합성 화면이므로\n" +
-    "웹에서 직접 저장은 불가능합니다."
+    "📸 AR 화면 캡처/녹화 안내\n\n"+
+    "• 캡처: 전원 + 볼륨 하단\n"+
+    "  (기기 설정에 따라 다를 수 있습니다.)\n\n"+
+    "• 녹화: 상단 알림창 → 화면 녹화\n\n"+
+    "웹 AR은 브라우저 합성 화면이므로\n"+
+    "웹 내부에서 직접 저장은 불가능합니다."
   );
 };
 </script>
