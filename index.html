@@ -57,6 +57,8 @@ const raycaster = new THREE.Raycaster();
 const status = document.getElementById('status');
 const btnGuide = document.getElementById('btnGuide');
 
+let lastPointer = { x: 0, y: 0, time: 0 };
+
 init();
 
 function init(){
@@ -73,6 +75,13 @@ function init(){
   });
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
+
+  // 📌 포인터 좌표 저장 (달 탭 판정용)
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+    lastPointer.time = performance.now();
+  });
 
   const controller = renderer.xr.getController(0);
   controller.addEventListener('select', onSelect);
@@ -98,11 +107,24 @@ function onSelect(){
     return;
   }
 
-  // 2️⃣ 달 상호작용 (중앙 기준)
-  raycaster.setFromCamera({x:0,y:0}, camera);
+  // 마지막 터치가 최근인지 확인 (XR에서 select와 pointer가 동시에 안 날 수 있음)
+  const now = performance.now();
+  const usePointer = (now - lastPointer.time < 200);
+
+  // 화면 좌표를 NDC로 변환
+  const x = usePointer ? (lastPointer.x / window.innerWidth) * 2 - 1 : 0;
+  const y = usePointer ? -(lastPointer.y / window.innerHeight) * 2 + 1 : 0;
+
+  // 달을 탭했는지 체크
+  raycaster.setFromCamera({ x, y }, camera);
   const hitMoon = raycaster.intersectObject(moon);
 
+  // 2️⃣ 달 상호작용 (달을 탭했을 때만)
   if (hitMoon.length){
+
+    // ⭐ 반짝임 효과 시작
+    moon.material.uniforms.blink.value = 1.0;
+
     if (phase === 1){
       phase = 2;
       eclipseProgress = 0;
@@ -198,6 +220,11 @@ function render(){
     }
   }
 
+  // 🌟 반짝임 감소 처리
+  if (moon && moon.material.uniforms.blink.value > 0){
+    moon.material.uniforms.blink.value *= 0.9; // 점점 감소
+  }
+
   if (phase === 2 && eclipseProgress < 1){
     eclipseProgress += 0.003;
     moon.material.uniforms.eclipse.value = eclipseProgress * 2;
@@ -215,7 +242,8 @@ function createMoon(){
       map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
       eclipse:{value:0},
       eclipseActive:{value:false},
-      phase:{value:0}
+      phase:{value:0},
+      blink:{value:0} // ⭐ 반짝임 추가
     },
     vertexShader:`
       varying vec2 vUv;
@@ -231,11 +259,16 @@ function createMoon(){
       uniform float eclipse;
       uniform bool eclipseActive;
       uniform float phase;
+      uniform float blink; // ⭐ 반짝임 uniform
       varying vec2 vUv;
       varying vec3 vNormal;
       void main(){
         vec3 c=texture2D(map,vUv).rgb;
         c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
+
+        // ⭐ 반짝임 효과: 밝기 증가
+        c += blink * 0.5;
+
         if(eclipseActive){
           float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
           c*=mix(0.3,1.,e);
@@ -271,6 +304,7 @@ btnGuide.onclick = ()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n" +
     "• 캡처: 전원 + 볼륨 하단\n" +
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n" +
     "• 녹화: 상단 알림창 → 화면 녹화\n\n" +
     "웹 AR은 브라우저 합성 화면이므로\n" +
     "웹에서 직접 저장은 불가능합니다."
