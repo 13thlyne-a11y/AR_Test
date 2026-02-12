@@ -70,7 +70,7 @@ function init(){
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  const arBtn = ARButton.createButton(renderer,{requiredFeatures:['local-floor']});
+  const arBtn = ARButton.createButton(renderer);
   arBtn.classList.add('ar-button');
   document.body.appendChild(arBtn);
 
