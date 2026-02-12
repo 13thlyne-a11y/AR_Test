@@ -3,55 +3,97 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Test</title>
+<title>WebXR AR Moon + Bunny</title>
 <style>
 body { margin:0; overflow:hidden; }
-#status{
+
+#ui{
   position:fixed;
   top:10px;
   left:10px;
+  z-index:9999;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+#status, button{
   background:rgba(0,0,0,0.7);
   color:#fff;
-  padding:8px 12px;
+  border:none;
   border-radius:6px;
-  z-index:9999;
+  padding:8px 12px;
+  font-size:14px;
 }
+
 .ar-button{
   background:rgba(0,0,0,0.85)!important;
   border:1px solid rgba(255,255,255,0.5)!important;
 }
 </style>
 </head>
+
 <body>
 
-<div id="status">초기화 중...</div>
+<div id="ui">
+  <div id="status">초기화 중...</div>
+  <button id="btnGuide">📸 캡처/녹화 방법 안내</button>
+</div>
 
 <script type="module">
 
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js';
 
+let scene, camera, renderer;
+let moon, moonGroup;
+let bunnySprite = null;
+let bunnyLine = null;
+
+let phase = 0;
+let eclipseProgress = 0;
+
+let particles = [];
+let raycaster = new THREE.Raycaster();
+let lastPointer = {x:0,y:0,time:0};
+
 const status = document.getElementById("status");
+const btnGuide = document.getElementById("btnGuide");
 
-let scene = new THREE.Scene();
-let camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+init();
 
-let renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.xr.enabled = true;
-document.body.appendChild(renderer.domElement);
+function init(){
 
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
 
-if (!navigator.xr) {
-  status.innerText = "❌ WebXR 미지원 브라우저";
-} else {
+  renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
+
+  renderer.domElement.addEventListener('pointerup', e=>{
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+    lastPointer.time = performance.now();
+  });
+
+  const controller = renderer.xr.getController(0);
+  controller.addEventListener("select", onSelect);
+  scene.add(controller);
+
+  if (!navigator.xr) {
+    status.innerText = "❌ WebXR 미지원 브라우저";
+    return;
+  }
 
   navigator.xr.isSessionSupported('immersive-ar').then((supported)=>{
 
     if(supported){
 
-      status.innerText = "✅ AR 지원됨 - 버튼 생성";
+      status.innerText = "AR 버튼을 눌러 시작하세요.";
 
       const button = ARButton.createButton(renderer,{
         optionalFeatures:['local-floor','hit-test']
@@ -61,19 +103,183 @@ if (!navigator.xr) {
       document.body.appendChild(button);
 
     } else {
-      status.innerText = "❌ immersive-ar 미지원";
+      status.innerText = "❌ immersive-ar 미지원 기기";
     }
 
-  }).catch(err=>{
-    status.innerText = "XR 체크 오류";
-    console.error(err);
   });
 
+  renderer.xr.addEventListener('sessionstart',()=>{
+    status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
+  });
+
+  renderer.xr.addEventListener('sessionend', resetScene);
+
+  renderer.setAnimationLoop(render);
 }
 
-renderer.setAnimationLoop(()=>{
-  renderer.render(scene,camera);
-});
+function resetScene(){
+
+  if(moonGroup){
+    scene.remove(moonGroup);
+    moonGroup=null;
+    moon=null;
+  }
+
+  if(bunnySprite){
+    scene.remove(bunnySprite);
+    bunnySprite=null;
+  }
+
+  particles.forEach(p=>scene.remove(p));
+  particles=[];
+
+  phase=0;
+  eclipseProgress=0;
+
+  status.innerText="AR 버튼을 눌러 시작하세요.";
+}
+
+function onSelect(){
+
+  if(phase===0){
+    createMoon();
+    spawnBunny();
+    phase=1;
+    status.innerText="🌕 달과 토끼가 나타났어요!";
+    return;
+  }
+
+  const now=performance.now();
+  const usePointer=(now-lastPointer.time<200);
+  const x=usePointer?(lastPointer.x/window.innerWidth)*2-1:0;
+  const y=usePointer?-(lastPointer.y/window.innerHeight)*2+1:0;
+
+  raycaster.setFromCamera({x,y},camera);
+
+  if(bunnySprite && raycaster.intersectObject(bunnySprite).length){
+    scene.remove(bunnySprite);
+    bunnySprite=null;
+    drawBunnyOnMoon();
+    status.innerText="🐇 달에 토끼가 그려졌어요!";
+    return;
+  }
+
+  if(moon && raycaster.intersectObject(moon).length){
+
+    createParticles(moonGroup.position);
+
+    if(phase===1){
+      phase=2;
+      eclipseProgress=0;
+      moon.material.uniforms.eclipseActive.value=true;
+      status.innerText="🌘 월식 시작!";
+    }
+    else if(phase===2){
+      phase=3;
+      moon.material.uniforms.phase.value=2.0;
+      status.innerText="🌑 붉은 달!";
+    }
+  }
+}
+
+function createMoon(){
+
+  const loader=new THREE.TextureLoader();
+  moonGroup=new THREE.Group();
+
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{
+      map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
+      eclipse:{value:0},
+      eclipseActive:{value:false},
+      phase:{value:0}
+    },
+    vertexShader:`varying vec2 vUv; varying vec3 vNormal;
+      void main(){
+        vUv=uv;
+        vNormal=normalize(normalMatrix*normal);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+      }`,
+    fragmentShader:`uniform sampler2D map;
+      uniform float eclipse; uniform bool eclipseActive; uniform float phase;
+      varying vec2 vUv; varying vec3 vNormal;
+      void main(){
+        vec3 c=texture2D(map,vUv).rgb;
+        c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
+        if(eclipseActive){
+          float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
+          c*=mix(0.3,1.,e);
+        }
+        if(phase>1.5){
+          c=vec3(c.r*1.2,c.g*0.6,c.b*0.55);
+        }
+        gl_FragColor=vec4(c,1.);
+      }`
+  });
+
+  moon=new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64),mat);
+  moonGroup.add(moon);
+
+  const cam=renderer.xr.getCamera(camera);
+  const dir=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
+  moonGroup.position.copy(cam.position).add(dir.multiplyScalar(1.5));
+
+  scene.add(moonGroup);
+}
+
+function spawnBunny(){
+
+  const texLoader=new THREE.TextureLoader();
+  texLoader.setCrossOrigin("anonymous");
+
+  texLoader.load(
+    "https://threejs.org/examples/textures/sprite.png",
+    function(tex){
+      bunnySprite=new THREE.Sprite(
+        new THREE.SpriteMaterial({map:tex,transparent:true})
+      );
+      bunnySprite.scale.set(0.4,0.4,1);
+
+      const side=Math.random()<0.5?-1:1;
+      bunnySprite.position.copy(moonGroup.position)
+        .add(new THREE.Vector3(side*1,0,0));
+
+      scene.add(bunnySprite);
+    }
+  );
+}
+
+function createStarTexture(){
+  const size=64;
+  const canvas=document.createElement('canvas');
+  canvas.width=canvas.height=size;
+  const ctx=canvas.getContext('2d');
+
+  ctx.translate(size/2,size/2);
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    ctx.lineTo(0,size/2);
+    ctx.rotate(Math.PI/5);
+    ctx.lineTo(0,-size/2);
+    ctx.rotate(-Math.PI*2/5);
+  }
+  ctx.closePath();
+  ctx.fillStyle="white";
+  ctx.fill();
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+btnGuide.onclick=()=>{
+  alert(
+    "📸 AR 화면 캡처/녹화 안내\n\n"+
+    "• 캡처: 전원 + 볼륨 하단\n"+
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n"
+    "• 녹화: 상단 알림창 → 화면 녹화\n\n"+
+    "웹 AR은 브라우저 합성 화면이므로\n"+
+    "웹 내부 저장은 불가능합니다."
+  );
+};
 
 </script>
 </body>
