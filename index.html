@@ -90,6 +90,27 @@ function init(){
     status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
   });
 
+  renderer.xr.addEventListener('sessionend',()=>{
+    if(moonGroup){
+      scene.remove(moonGroup);
+      moonGroup=null;
+      moon=null;
+    }
+
+    if(bunnySprite){
+      scene.remove(bunnySprite);
+      bunnySprite=null;
+    }
+
+    particles.forEach(p=>scene.remove(p));
+    particles=[];
+
+    phase=0;
+    eclipseProgress=0;
+
+    status.innerText="AR 버튼을 눌러 시작하세요.";
+  });
+
   renderer.setAnimationLoop(render);
 }
 
@@ -110,7 +131,6 @@ function onSelect(){
 
   raycaster.setFromCamera({x,y},camera);
 
-  // 🐇 토끼 터치
   if(bunnySprite && raycaster.intersectObject(bunnySprite).length){
     scene.remove(bunnySprite);
     bunnySprite=null;
@@ -119,7 +139,6 @@ function onSelect(){
     return;
   }
 
-  // 🌕 달 터치
   if(moon && raycaster.intersectObject(moon).length){
 
     createParticles(moonGroup.position);
@@ -191,17 +210,24 @@ function createMoon(){
 }
 
 function spawnBunny(){
-  const tex=new THREE.TextureLoader().load('https://i.imgur.com/9WfhK7C.png');
-  bunnySprite=new THREE.Sprite(
-    new THREE.SpriteMaterial({map:tex,transparent:true})
+  const loader=new THREE.TextureLoader();
+  loader.setCrossOrigin("anonymous");
+
+  loader.load(
+    "https://threejs.org/examples/textures/sprite.png",
+    function(tex){
+      bunnySprite=new THREE.Sprite(
+        new THREE.SpriteMaterial({map:tex,transparent:true})
+      );
+      bunnySprite.scale.set(0.4,0.4,1);
+
+      const side=Math.random()<0.5?-1:1;
+      bunnySprite.position.copy(moonGroup.position)
+        .add(new THREE.Vector3(side*1,0,0));
+
+      scene.add(bunnySprite);
+    }
   );
-  bunnySprite.scale.set(0.4,0.4,1);
-
-  const side=Math.random()<0.5?-1:1;
-  bunnySprite.position.copy(moonGroup.position)
-    .add(new THREE.Vector3(side*1,0,0));
-
-  scene.add(bunnySprite);
 }
 
 function drawBunnyOnMoon(){
@@ -217,6 +243,29 @@ function drawBunnyOnMoon(){
   moonGroup.add(bunnyLine);
 }
 
+function createStarTexture(){
+  const size=64;
+  const canvas=document.createElement('canvas');
+  canvas.width=canvas.height=size;
+  const ctx=canvas.getContext('2d');
+
+  ctx.translate(size/2,size/2);
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    ctx.lineTo(0,size/2);
+    ctx.translate(0,size/2);
+    ctx.rotate((Math.PI*2/10));
+    ctx.lineTo(0,-size/2);
+    ctx.translate(0,-size/2);
+    ctx.rotate(-(Math.PI*6/10));
+  }
+  ctx.closePath();
+  ctx.fillStyle="white";
+  ctx.fill();
+
+  return new THREE.CanvasTexture(canvas);
+}
+
 function createParticles(position){
   const geometry=new THREE.BufferGeometry();
   const count=60;
@@ -226,38 +275,55 @@ function createParticles(position){
   for(let i=0;i<count;i++){
     positions.push(position.x,position.y,position.z);
     velocities.push(
-      (Math.random()-0.5)*0.05,
-      (Math.random()-0.5)*0.05,
-      (Math.random()-0.5)*0.05
+      (Math.random()-0.5)*0.03,
+      (Math.random()-0.5)*0.03,
+      (Math.random()-0.5)*0.03
     );
   }
 
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('position',
+    new THREE.Float32BufferAttribute(positions,3)
+  );
+
   const material=new THREE.PointsMaterial({
-    color:0xffffff,
-    size:0.03,
+    map:createStarTexture(),
+    size:0.08,
     transparent:true,
-    opacity:1
+    blending:THREE.AdditiveBlending,
+    depthWrite:false
   });
 
   const points=new THREE.Points(geometry,material);
-  points.userData={velocities,life:1};
+  points.userData={
+    velocities,
+    life:1,
+    twinkleOffset:Math.random()*10
+  };
+
   scene.add(points);
   particles.push(points);
 }
 
 function updateParticles(){
+  const time=performance.now()*0.005;
+
   particles.forEach((p,i)=>{
     const pos=p.geometry.attributes.position.array;
     const vel=p.userData.velocities;
+
     for(let j=0;j<vel.length/3;j++){
       pos[j*3]+=vel[j*3];
       pos[j*3+1]+=vel[j*3+1];
       pos[j*3+2]+=vel[j*3+2];
     }
+
     p.geometry.attributes.position.needsUpdate=true;
-    p.userData.life-=0.02;
-    p.material.opacity=p.userData.life;
+
+    p.userData.life-=0.015;
+    p.material.opacity=
+      p.userData.life*
+      (0.5+0.5*Math.sin(time+p.userData.twinkleOffset));
+
     if(p.userData.life<=0){
       scene.remove(p);
       particles.splice(i,1);
@@ -279,12 +345,12 @@ btnGuide.onclick=()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n"+
     "• 캡처: 전원 + 볼륨 하단\n"+
-    "  (기기 설정에 따라 다를 수 있습니다.)\n\n"+
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n"
     "• 녹화: 상단 알림창 → 화면 녹화\n\n"+
     "웹 AR은 브라우저 합성 화면이므로\n"+
-    "웹 내부에서 직접 저장은 불가능합니다."
+    "웹 내부 저장은 불가능합니다."
   );
 };
 </script>
 </body>
-</html>
+</html
