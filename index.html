@@ -247,30 +247,78 @@ function createMoon(){
 }
 
 function spawnBunny(){
-  const texLoader=new THREE.TextureLoader();
-  texLoader.setCrossOrigin("anonymous");
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
 
-  // 토끼 이미지가 확실히 로드되도록 안정적인 URL 사용
-  texLoader.load(
-    "https://threejs.org/examples/textures/sprite.png",
-    function(tex){
-      bunnySprite=new THREE.Sprite(
-        new THREE.SpriteMaterial({map:tex,transparent:true})
-      );
-      bunnySprite.scale.set(0.4,0.4,1);
+  // 투명 배경 유지
+  ctx.clearRect(0,0,size,size);
 
-      const side=Math.random()<0.5?-1:1;
-      bunnySprite.position.copy(moonGroup.position)
-        .add(new THREE.Vector3(side*1,0,0));
+  // 몸통
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.ellipse(128,150,55,70,0,0,Math.PI*2);
+  ctx.fill();
 
-      scene.add(bunnySprite);
-    },
-    undefined,
-    function(err){
-      console.error("토끼 이미지 로드 실패", err);
-      status.innerText="❌ 토끼 이미지 로드 실패";
-    }
+  // 얼굴
+  ctx.beginPath();
+  ctx.arc(128,95,45,0,Math.PI*2);
+  ctx.fill();
+
+  // 귀
+  ctx.beginPath();
+  ctx.ellipse(100,35,18,55,0,0,Math.PI*2);
+  ctx.ellipse(156,35,18,55,0,0,Math.PI*2);
+  ctx.fill();
+
+  // 귀 안쪽
+  ctx.fillStyle="#ffb6c1";
+  ctx.beginPath();
+  ctx.ellipse(100,40,8,35,0,0,Math.PI*2);
+  ctx.ellipse(156,40,8,35,0,0,Math.PI*2);
+  ctx.fill();
+
+  // 눈
+  ctx.fillStyle="#000000";
+  ctx.beginPath();
+  ctx.arc(112,90,5,0,Math.PI*2);
+  ctx.arc(144,90,5,0,Math.PI*2);
+  ctx.fill();
+
+  // 코
+  ctx.fillStyle="#ff8c8c";
+  ctx.beginPath();
+  ctx.arc(128,105,5,0,Math.PI*2);
+  ctx.fill();
+
+  // 입
+  ctx.strokeStyle="#000000";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(128,110);
+  ctx.quadraticCurveTo(118,120,110,115);
+  ctx.moveTo(128,110);
+  ctx.quadraticCurveTo(138,120,146,115);
+  ctx.stroke();
+
+  const texture = new THREE.CanvasTexture(canvas);
+
+  bunnySprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true
+    })
   );
+
+  bunnySprite.scale.set(0.5,0.5,1);
+
+  const side = Math.random()<0.5 ? -1 : 1;
+
+  bunnySprite.position.copy(moonGroup.position)
+    .add(new THREE.Vector3(side*1,0,0));
+
+  scene.add(bunnySprite);
 }
 
 function drawBunnyOnMoon(){
@@ -385,6 +433,7 @@ btnGuide.onclick=()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n"+
     "• 캡처: 전원 + 볼륨 하단\n"+
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n"
     "• 녹화: 상단 알림창 → 화면 녹화\n\n"+
     "웹 AR은 브라우저 합성 화면이므로\n"+
     "웹 내부 저장은 불가능합니다."
