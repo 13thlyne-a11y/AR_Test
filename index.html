@@ -62,55 +62,59 @@ const btnGuide=document.getElementById("btnGuide");
 
 init();
 
-function init(){
-  scene=new THREE.Scene();
-  camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,20);
+async function init(){
+  try {
+    scene=new THREE.Scene();
+    camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,20);
 
-  renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
-  renderer.setSize(window.innerWidth,window.innerHeight);
-  renderer.xr.enabled=true;
-  document.body.appendChild(renderer.domElement);
+    renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    renderer.xr.enabled=true;
+    document.body.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
+    scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
-  renderer.domElement.addEventListener('pointerup', e=>{
-    lastPointer.x=e.clientX;
-    lastPointer.y=e.clientY;
-    lastPointer.time=performance.now();
-  });
+    renderer.domElement.addEventListener('pointerup', e=>{
+      lastPointer.x=e.clientX;
+      lastPointer.y=e.clientY;
+      lastPointer.time=performance.now();
+    });
 
-  const controller=renderer.xr.getController(0);
-  controller.addEventListener("select", onSelect);
-  scene.add(controller);
+    const controller=renderer.xr.getController(0);
+    controller.addEventListener("select", onSelect);
+    scene.add(controller);
 
-  if(!navigator.xr){
-    status.innerText="❌ WebXR 미지원 브라우저";
-    return;
-  }
-
-  navigator.xr.isSessionSupported('immersive-ar').then(supported=>{
-    if(supported){
-      status.innerText="AR 버튼을 눌러 시작하세요.";
-
-      const btn=ARButton.createButton(renderer,{
-        optionalFeatures:['local-floor','hit-test']
-      });
-
-      btn.classList.add("ar-button");
-      document.body.appendChild(btn);
-
-    }else{
-      status.innerText="❌ immersive-ar 미지원 기기";
+    if(!navigator.xr){
+      status.innerText="❌ WebXR 미지원 브라우저";
+      return;
     }
-  });
 
-  renderer.xr.addEventListener("sessionstart",()=>{
-    status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
-  });
+    const supported = await navigator.xr.isSessionSupported('immersive-ar');
+    if(!supported){
+      status.innerText="❌ immersive-ar 미지원 기기";
+      return;
+    }
 
-  renderer.xr.addEventListener("sessionend", resetScene);
+    status.innerText="AR 버튼을 눌러 시작하세요.";
 
-  renderer.setAnimationLoop(render);
+    const btn=ARButton.createButton(renderer,{
+      optionalFeatures:['local-floor','hit-test']
+    });
+    btn.classList.add("ar-button");
+    document.body.appendChild(btn);
+
+    renderer.xr.addEventListener("sessionstart",()=>{
+      status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
+    });
+
+    renderer.xr.addEventListener("sessionend", resetScene);
+
+    renderer.setAnimationLoop(render);
+
+  } catch (e) {
+    console.error(e);
+    status.innerText="❌ 초기화 실패 (콘솔 확인)";
+  }
 }
 
 function resetScene(){
@@ -130,7 +134,6 @@ function resetScene(){
 }
 
 function onSelect(){
-
   if(phase===0){
     createMoon();
     spawnBunny();
@@ -230,8 +233,9 @@ function spawnBunny(){
   const texLoader=new THREE.TextureLoader();
   texLoader.setCrossOrigin("anonymous");
 
+  // 안전한 이미지 URL로 교체 (CORS 문제 방지)
   texLoader.load(
-    "https://threejs.org/examples/textures/sprite.png",
+    "https://i.imgur.com/9WfhK7C.png",
     function(tex){
       bunnySprite=new THREE.Sprite(
         new THREE.SpriteMaterial({map:tex,transparent:true})
@@ -243,6 +247,11 @@ function spawnBunny(){
         .add(new THREE.Vector3(side*1,0,0));
 
       scene.add(bunnySprite);
+    },
+    undefined,
+    function(err){
+      console.error("토끼 이미지 로드 실패", err);
+      status.innerText="❌ 토끼 이미지 로드 실패";
     }
   );
 }
@@ -360,7 +369,6 @@ btnGuide.onclick=()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n"+
     "• 캡처: 전원 + 볼륨 하단\n"+
-    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n"
     "• 녹화: 상단 알림창 → 화면 녹화\n\n"+
     "웹 AR은 브라우저 합성 화면이므로\n"+
     "웹 내부 저장은 불가능합니다."
