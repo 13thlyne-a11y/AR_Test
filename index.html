@@ -57,6 +57,9 @@ let particles=[];
 let raycaster=new THREE.Raycaster();
 let lastPointer={x:0,y:0,time:0};
 
+let moonTouchedOnce=false;   // 달을 탭했는지 체크
+let moonTouchedTwice=false;  // 월식 이후 달을 다시 탭했는지 체크
+
 const status=document.getElementById("status");
 const btnGuide=document.getElementById("btnGuide");
 
@@ -130,10 +133,15 @@ function resetScene(){
   phase=0;
   eclipseProgress=0;
 
+  moonTouchedOnce=false;
+  moonTouchedTwice=false;
+
   status.innerText="AR 버튼을 눌러 시작하세요.";
 }
 
 function onSelect(){
+
+  // 1) 처음 화면 탭하면 달 생성 (어느 위치든 OK)
   if(phase===0){
     createMoon();
     spawnBunny();
@@ -142,6 +150,7 @@ function onSelect(){
     return;
   }
 
+  // 이후부터는 달을 탭했을 때만 반응하도록 처리
   const now=performance.now();
   const usePointer=(now-lastPointer.time<200);
   const x=usePointer?(lastPointer.x/window.innerWidth)*2-1:0;
@@ -158,22 +167,30 @@ function onSelect(){
     return;
   }
 
-  // 달 터치
-  if(moon && raycaster.intersectObject(moon).length){
+  // 달 터치만 반응하도록 처리
+  const moonHit = moon && raycaster.intersectObject(moon).length;
 
-    createParticles(moonGroup.position);
+  if(!moonHit) return;
 
-    if(phase===1){
-      phase=2;
-      eclipseProgress=0;
-      moon.material.uniforms.eclipseActive.value=true;
-      status.innerText="🌘 월식 시작!";
-    }
-    else if(phase===2){
-      phase=3;
-      moon.material.uniforms.phase.value=2.0;
-      status.innerText="🌑 붉은 달!";
-    }
+  // 달 터치 1회 -> 월식 시작
+  if(phase===1 && !moonTouchedOnce){
+    moonTouchedOnce=true;
+    createParticles(moonGroup.position); // 파티클 1회 발생
+    phase=2;
+    eclipseProgress=0;
+    moon.material.uniforms.eclipseActive.value=true;
+    status.innerText="🌘 월식 시작!";
+    return;
+  }
+
+  // 달 터치 2회 -> 붉은 달
+  if(phase===2 && moonTouchedOnce && !moonTouchedTwice){
+    moonTouchedTwice=true;
+    createParticles(moonGroup.position); // 파티클 1회 발생
+    phase=3;
+    moon.material.uniforms.phase.value=2.0;
+    status.innerText="🌑 붉은 달!";
+    return;
   }
 }
 
@@ -233,9 +250,9 @@ function spawnBunny(){
   const texLoader=new THREE.TextureLoader();
   texLoader.setCrossOrigin("anonymous");
 
-  // 안전한 이미지 URL로 교체 (CORS 문제 방지)
+  // 토끼 이미지가 확실히 로드되도록 안정적인 URL 사용
   texLoader.load(
-    "https://i.imgur.com/9WfhK7C.png",
+    "https://threejs.org/examples/textures/sprite.png",
     function(tex){
       bunnySprite=new THREE.Sprite(
         new THREE.SpriteMaterial({map:tex,transparent:true})
@@ -269,22 +286,15 @@ function drawBunnyOnMoon(){
   moonGroup.add(bunnyLine);
 }
 
-function createStarTexture(){
+function createCircleTexture(){
   const size=64;
   const canvas=document.createElement('canvas');
   canvas.width=canvas.height=size;
   const ctx=canvas.getContext('2d');
 
-  ctx.translate(size/2,size/2);
-  ctx.beginPath();
-  for(let i=0;i<5;i++){
-    ctx.lineTo(0,size/2);
-    ctx.rotate(Math.PI/5);
-    ctx.lineTo(0,-size/2);
-    ctx.rotate(-Math.PI*2/5);
-  }
-  ctx.closePath();
   ctx.fillStyle="white";
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
   ctx.fill();
 
   return new THREE.CanvasTexture(canvas);
@@ -310,8 +320,8 @@ function createParticles(position){
   );
 
   const material=new THREE.PointsMaterial({
-    map:createStarTexture(),
-    size:0.08,
+    map:createCircleTexture(),
+    size:0.05,
     transparent:true,
     blending:THREE.AdditiveBlending,
     depthWrite:false
@@ -356,6 +366,12 @@ function updateParticles(){
 }
 
 function render(){
+  // 2) 달 자전 효과 추가
+  if(moonGroup){
+    moonGroup.rotation.y += 0.003; // 천천히 회전
+  }
+
+  // 1) 월식 진행
   if(phase===2 && eclipseProgress<1){
     eclipseProgress+=0.003;
     moon.material.uniforms.eclipse.value=eclipseProgress*2;
