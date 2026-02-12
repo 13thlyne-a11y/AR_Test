@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon</title>
+<title>WebXR AR Moon + Bunny</title>
 <style>
 body { margin:0; overflow:hidden; }
 
@@ -49,9 +49,13 @@ let scene, camera, renderer;
 let moon, moonGroup;
 let bunnySprite=null;
 let bunnyLine=null;
-let particles=[];
+
 let phase=0;
 let eclipseProgress=0;
+
+let particles=[];
+let raycaster=new THREE.Raycaster();
+let lastPointer={x:0,y:0,time:0};
 
 const status=document.getElementById("status");
 const btnGuide=document.getElementById("btnGuide");
@@ -59,7 +63,6 @@ const btnGuide=document.getElementById("btnGuide");
 init();
 
 function init(){
-
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,20);
 
@@ -70,13 +73,22 @@ function init(){
 
   scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
+  renderer.domElement.addEventListener('pointerup', e=>{
+    lastPointer.x=e.clientX;
+    lastPointer.y=e.clientY;
+    lastPointer.time=performance.now();
+  });
+
+  const controller=renderer.xr.getController(0);
+  controller.addEventListener("select", onSelect);
+  scene.add(controller);
+
   if(!navigator.xr){
     status.innerText="❌ WebXR 미지원 브라우저";
     return;
   }
 
   navigator.xr.isSessionSupported('immersive-ar').then(supported=>{
-
     if(supported){
       status.innerText="AR 버튼을 눌러 시작하세요.";
 
@@ -93,14 +105,12 @@ function init(){
   });
 
   renderer.xr.addEventListener("sessionstart",()=>{
-    status.innerText="화면을 탭하면 달이 나타납니다 🌕";
+    status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
   });
 
-  renderer.xr.addEventListener("sessionend",resetScene);
+  renderer.xr.addEventListener("sessionend", resetScene);
 
   renderer.setAnimationLoop(render);
-
-  window.addEventListener("click",onTap);
 }
 
 function resetScene(){
@@ -111,6 +121,7 @@ function resetScene(){
   moonGroup=null;
   moon=null;
   bunnySprite=null;
+  bunnyLine=null;
   particles=[];
   phase=0;
   eclipseProgress=0;
@@ -118,14 +129,48 @@ function resetScene(){
   status.innerText="AR 버튼을 눌러 시작하세요.";
 }
 
-function onTap(){
-  if(!renderer.xr.isPresenting) return;
+function onSelect(){
 
   if(phase===0){
     createMoon();
     spawnBunny();
     phase=1;
-    status.innerText="🌕 달과 토끼 등장!";
+    status.innerText="🌕 달과 토끼가 나타났어요!";
+    return;
+  }
+
+  const now=performance.now();
+  const usePointer=(now-lastPointer.time<200);
+  const x=usePointer?(lastPointer.x/window.innerWidth)*2-1:0;
+  const y=usePointer?-(lastPointer.y/window.innerHeight)*2+1:0;
+
+  raycaster.setFromCamera({x,y},camera);
+
+  // 토끼 터치
+  if(bunnySprite && raycaster.intersectObject(bunnySprite).length){
+    scene.remove(bunnySprite);
+    bunnySprite=null;
+    drawBunnyOnMoon();
+    status.innerText="🐇 달에 토끼가 그려졌어요!";
+    return;
+  }
+
+  // 달 터치
+  if(moon && raycaster.intersectObject(moon).length){
+
+    createParticles(moonGroup.position);
+
+    if(phase===1){
+      phase=2;
+      eclipseProgress=0;
+      moon.material.uniforms.eclipseActive.value=true;
+      status.innerText="🌘 월식 시작!";
+    }
+    else if(phase===2){
+      phase=3;
+      moon.material.uniforms.phase.value=2.0;
+      status.innerText="🌑 붉은 달!";
+    }
   }
 }
 
@@ -133,8 +178,42 @@ function createMoon(){
   const loader=new THREE.TextureLoader();
   moonGroup=new THREE.Group();
 
-  const mat=new THREE.MeshStandardMaterial({
-    map:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{
+      map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
+      eclipse:{value:0},
+      eclipseActive:{value:false},
+      phase:{value:0}
+    },
+    vertexShader:`
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main(){
+        vUv=uv;
+        vNormal=normalize(normalMatrix*normal);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+      }
+    `,
+    fragmentShader:`
+      uniform sampler2D map;
+      uniform float eclipse;
+      uniform bool eclipseActive;
+      uniform float phase;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main(){
+        vec3 c=texture2D(map,vUv).rgb;
+        c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
+        if(eclipseActive){
+          float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
+          c*=mix(0.3,1.,e);
+        }
+        if(phase>1.5){
+          c=vec3(c.r*1.2,c.g*0.6,c.b*0.55);
+        }
+        gl_FragColor=vec4(c,1.);
+      }
+    `
   });
 
   moon=new THREE.Mesh(new THREE.SphereGeometry(0.15,64,64),mat);
@@ -148,24 +227,132 @@ function createMoon(){
 }
 
 function spawnBunny(){
-  const tex=new THREE.TextureLoader().load(
-    "https://threejs.org/examples/textures/sprite.png"
+  const texLoader=new THREE.TextureLoader();
+  texLoader.setCrossOrigin("anonymous");
+
+  texLoader.load(
+    "https://threejs.org/examples/textures/sprite.png",
+    function(tex){
+      bunnySprite=new THREE.Sprite(
+        new THREE.SpriteMaterial({map:tex,transparent:true})
+      );
+      bunnySprite.scale.set(0.4,0.4,1);
+
+      const side=Math.random()<0.5?-1:1;
+      bunnySprite.position.copy(moonGroup.position)
+        .add(new THREE.Vector3(side*1,0,0));
+
+      scene.add(bunnySprite);
+    }
+  );
+}
+
+function drawBunnyOnMoon(){
+  const points=[
+    new THREE.Vector3(0.02,0.03,0.16),
+    new THREE.Vector3(0.05,0.07,0.16),
+    new THREE.Vector3(0.08,0.03,0.16),
+    new THREE.Vector3(0.05,0.0,0.16),
+    new THREE.Vector3(0.02,0.03,0.16)
+  ];
+  const geo=new THREE.BufferGeometry().setFromPoints(points);
+  bunnyLine=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xffffff}));
+  moonGroup.add(bunnyLine);
+}
+
+function createStarTexture(){
+  const size=64;
+  const canvas=document.createElement('canvas');
+  canvas.width=canvas.height=size;
+  const ctx=canvas.getContext('2d');
+
+  ctx.translate(size/2,size/2);
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    ctx.lineTo(0,size/2);
+    ctx.rotate(Math.PI/5);
+    ctx.lineTo(0,-size/2);
+    ctx.rotate(-Math.PI*2/5);
+  }
+  ctx.closePath();
+  ctx.fillStyle="white";
+  ctx.fill();
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+function createParticles(position){
+  const geometry=new THREE.BufferGeometry();
+  const count=60;
+  const positions=[];
+  const velocities=[];
+
+  for(let i=0;i<count;i++){
+    positions.push(position.x,position.y,position.z);
+    velocities.push(
+      (Math.random()-0.5)*0.03,
+      (Math.random()-0.5)*0.03,
+      (Math.random()-0.5)*0.03
+    );
+  }
+
+  geometry.setAttribute('position',
+    new THREE.Float32BufferAttribute(positions,3)
   );
 
-  bunnySprite=new THREE.Sprite(
-    new THREE.SpriteMaterial({map:tex,transparent:true})
-  );
+  const material=new THREE.PointsMaterial({
+    map:createStarTexture(),
+    size:0.08,
+    transparent:true,
+    blending:THREE.AdditiveBlending,
+    depthWrite:false
+  });
 
-  bunnySprite.scale.set(0.4,0.4,1);
+  const points=new THREE.Points(geometry,material);
+  points.userData={
+    velocities,
+    life:1,
+    twinkleOffset:Math.random()*10
+  };
 
-  const side=Math.random()<0.5?-1:1;
-  bunnySprite.position.copy(moonGroup.position)
-    .add(new THREE.Vector3(side*1,0,0));
+  scene.add(points);
+  particles.push(points);
+}
 
-  scene.add(bunnySprite);
+function updateParticles(){
+  const time=performance.now()*0.005;
+
+  particles.forEach((p,i)=>{
+    const pos=p.geometry.attributes.position.array;
+    const vel=p.userData.velocities;
+
+    for(let j=0;j<vel.length/3;j++){
+      pos[j*3]+=vel[j*3];
+      pos[j*3+1]+=vel[j*3+1];
+      pos[j*3+2]+=vel[j*3+2];
+    }
+
+    p.geometry.attributes.position.needsUpdate=true;
+
+    p.userData.life-=0.015;
+    p.material.opacity=
+      p.userData.life*
+      (0.5+0.5*Math.sin(time+p.userData.twinkleOffset));
+
+    if(p.userData.life<=0){
+      scene.remove(p);
+      particles.splice(i,1);
+    }
+  });
 }
 
 function render(){
+  if(phase===2 && eclipseProgress<1){
+    eclipseProgress+=0.003;
+    moon.material.uniforms.eclipse.value=eclipseProgress*2;
+  }
+
+  updateParticles();
   renderer.render(scene,camera);
 }
 
@@ -173,6 +360,7 @@ btnGuide.onclick=()=>{
   alert(
     "📸 AR 화면 캡처/녹화 안내\n\n"+
     "• 캡처: 전원 + 볼륨 하단\n"+
+    "  (사용버튼은 개인설정에 따라 달라질 수 있습니다.)\n"
     "• 녹화: 상단 알림창 → 화면 녹화\n\n"+
     "웹 AR은 브라우저 합성 화면이므로\n"+
     "웹 내부 저장은 불가능합니다."
