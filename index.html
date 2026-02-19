@@ -240,30 +240,63 @@ function createMoon(){
 }
 
 function spawnBunny(){
+
   const size=256;
   const canvas=document.createElement('canvas');
   canvas.width=canvas.height=size;
   const ctx=canvas.getContext('2d');
 
+  ctx.clearRect(0,0,size,size);
+
   ctx.fillStyle="white";
+
+  // 몸
   ctx.beginPath();
-  ctx.arc(128,150,60,0,Math.PI*2);
+  ctx.ellipse(128,170,60,70,0,0,Math.PI*2);
   ctx.fill();
+
+  // 머리
   ctx.beginPath();
-  ctx.arc(128,90,45,0,Math.PI*2);
+  ctx.arc(128,100,45,0,Math.PI*2);
+  ctx.fill();
+
+  // 왼쪽 귀
+  ctx.beginPath();
+  ctx.ellipse(95,40,20,70,0,0,Math.PI*2);
+  ctx.fill();
+
+  // 오른쪽 귀
+  ctx.beginPath();
+  ctx.ellipse(160,40,20,70,0,0,Math.PI*2);
+  ctx.fill();
+
+  // 눈
+  ctx.fillStyle="black";
+  ctx.beginPath();
+  ctx.arc(115,95,5,0,Math.PI*2);
+  ctx.arc(140,95,5,0,Math.PI*2);
+  ctx.fill();
+
+  // 코
+  ctx.fillStyle="pink";
+  ctx.beginPath();
+  ctx.arc(128,110,4,0,Math.PI*2);
   ctx.fill();
 
   const texture=new THREE.CanvasTexture(canvas);
 
   bunnySprite=new THREE.Sprite(
-    new THREE.SpriteMaterial({map:texture,transparent:true})
+    new THREE.SpriteMaterial({
+      map:texture,
+      transparent:true
+    })
   );
 
-  bunnySprite.scale.set(0.5,0.5,1);
+  bunnySprite.scale.set(0.4,0.4,1);
 
   const side=Math.random()<0.5?-1:1;
   bunnySprite.position.copy(moonGroup.position)
-    .add(new THREE.Vector3(side*1,0,0));
+    .add(new THREE.Vector3(side*0.6,0,0));
 
   scene.add(bunnySprite);
 }
