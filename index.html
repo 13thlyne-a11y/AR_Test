@@ -47,6 +47,7 @@ let bunnySprite=null;
 let bunnyTexture=null;
 
 let phase=0;
+let stopRotation = false;
 let eclipseProgress=0;
 
 let particles=[];
@@ -145,15 +146,27 @@ function onSelect(){
   raycaster.setFromCamera({x,y},camera);
 
   if(bunnySprite && raycaster.intersectObject(bunnySprite).length){
+
     scene.remove(bunnySprite);
     bunnySprite=null;
-    drawBunnyOnMoon();
-    status.innerText="🐇 달에 토끼가 새겨졌어요!";
+
+    // 🌕 회전 토글
+    stopRotation = true;
+    moonGroup.rotation.set(0, 0, 0);
+
+    status.innerText="🌕 달이 정면으로 멈췄어요! (달을 다시 탭하면 회전)";
     return;
   }
 
   const moonHit = moon && raycaster.intersectObject(moon).length;
   if(!moonHit) return;
+
+  // 🌕 회전 멈춤 상태라면 다시 회전 시작
+  if(stopRotation){
+    stopRotation = false;
+    status.innerText="🌕 다시 회전합니다!";
+    return;
+  }
 
   if(phase===1 && !moonTouchedOnce){
     moonTouchedOnce=true;
@@ -301,32 +314,6 @@ function spawnBunny(){
   scene.add(bunnySprite);
 }
 
-function drawBunnyOnMoon(){
-
-  const size=1024;
-  const canvas=document.createElement('canvas');
-  canvas.width=canvas.height=size;
-  const ctx=canvas.getContext('2d');
-
-  ctx.fillStyle="white";
-
-  ctx.beginPath();
-  ctx.ellipse(512,640,180,220,0,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(512,420,160,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.ellipse(420,220,60,200,0,0,Math.PI*2);
-  ctx.ellipse(600,220,60,200,0,0,Math.PI*2);
-  ctx.fill();
-
-  bunnyTexture=new THREE.CanvasTexture(canvas);
-  moon.material.uniforms.bunnyMap.value=bunnyTexture;
-}
-
 function createCircleTexture(){
   const size=64;
   const canvas=document.createElement('canvas');
@@ -403,7 +390,7 @@ function updateParticles(){
 
 function render(){
 
-  if(moonGroup){
+  if(moonGroup && !stopRotation){
     moonGroup.rotation.y+=0.003;
   }
 
