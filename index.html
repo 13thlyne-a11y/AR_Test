@@ -47,7 +47,7 @@ let bunnySprite=null;
 let bunnyTexture=null;
 
 let phase=0;
-let stopRotation = false;
+let stopRotation = true;
 let eclipseProgress=0;
 
 let particles=[];
@@ -152,9 +152,9 @@ function onSelect(){
 
     // 🌕 회전 토글
     stopRotation = true;
-    moonGroup.rotation.set(0, 0, 0);
+    moonGroup.rotation.set(0, -Math.PI / 2, 0);
 
-    status.innerText="🌕 달이 정면으로 멈췄어요! (달을 다시 탭하면 회전)";
+    status.innerText="🌕 지구에서 보이는 달 앞면으로 고정! (달을 다시 탭하면 회전)";
     return;
   }
 
