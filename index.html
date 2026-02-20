@@ -47,7 +47,7 @@ let bunnySprite=null;
 let bunnyTexture=null;
 
 let phase=0;
-let stopRotation = true;
+let stopRotation = false;
 let eclipseProgress=0;
 
 let particles=[];
@@ -126,6 +126,7 @@ function resetScene(){
   moonTouchedTwice=false;
 
   status.innerText="AR 버튼을 눌러 시작하세요.";
+  stopRotation = false;
 }
 
 function onSelect(){
@@ -148,13 +149,15 @@ function onSelect(){
   if(bunnySprite && raycaster.intersectObject(bunnySprite).length){
 
     scene.remove(bunnySprite);
-    bunnySprite=null;
+    bunnySprite = null;
 
-    // 🌕 회전 토글
+    // 🌕 회전 멈춤
     stopRotation = true;
+
+    // 🌕 우리가 익숙한 달 앞면으로 정렬
     moonGroup.rotation.set(0, -Math.PI / 2, 0);
 
-    status.innerText="🌕 지구에서 보이는 달 앞면으로 고정! (달을 다시 탭하면 회전)";
+    status.innerText="🌕 익숙한 달 앞면으로 멈췄어요!";
     return;
   }
 
@@ -222,7 +225,7 @@ function createMoon(){
       void main(){
 
         vec3 c=texture2D(map,vUv).rgb;
-        c=pow(c,vec3(0.75))*vec3(1.2,1.15,0.95);
+        c=pow(c,vec3(0.85))*vec3(1.15,1.1,1.0);
 
         vec4 bunny=texture2D(bunnyMap,vUv);
         float mask=bunny.r;
@@ -250,6 +253,7 @@ function createMoon(){
   moonGroup.position.copy(cam.position).add(dir.multiplyScalar(1.5));
 
   scene.add(moonGroup);
+  stopRotation = false;
 }
 
 function spawnBunny(){
