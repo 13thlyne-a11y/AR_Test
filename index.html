@@ -201,8 +201,7 @@ function createMoon(){
       map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
       eclipse:{value:0},
       eclipseActive:{value:false},
-      phase:{value:0},
-      bunnyMap:{value:new THREE.Texture()}
+      phase:{value:0}
     },
     vertexShader:`
       varying vec2 vUv;
@@ -215,7 +214,6 @@ function createMoon(){
     `,
     fragmentShader:`
       uniform sampler2D map;
-      uniform sampler2D bunnyMap;
       uniform float eclipse;
       uniform bool eclipseActive;
       uniform float phase;
@@ -226,11 +224,7 @@ function createMoon(){
 
         vec3 c=texture2D(map,vUv).rgb;
         c=pow(c,vec3(0.8));
-        c=mix(Vec3(0.15), c, 1.2);
-
-        vec4 bunny=texture2D(bunnyMap,vUv);
-        float mask=bunny.r;
-        c-=mask*0.25;
+        c=mix(vec3(0.15), c, 1.2);
 
         if(eclipseActive){
           float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
