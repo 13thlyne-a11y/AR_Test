@@ -224,7 +224,8 @@ function createMoon(){
 
         vec3 c=texture2D(map,vUv).rgb;
         c=pow(c,vec3(0.8));
-        c=mix(vec3(0.2,0.18,0.12), c, 1.1);
+        c=mix(vec3(0.15), c, 1.2);
+        c *= vec3(1.3, 1.15, 0.8);
 
         if(eclipseActive){
           float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
@@ -260,97 +261,64 @@ function spawnBunny(){
 
   ctx.clearRect(0,0,size,size);
 
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = "#222";
-  ctx.fillStyle = "white";
+  // ===== 기본 색 =====
+  const bodyColor="#f7f7f7";
+  const blushColor="rgba(255,160,180,0.35)";
 
-  // ===== 몸 =====
+  // 몸
+  ctx.fillStyle=bodyColor;
   ctx.beginPath();
-  ctx.ellipse(256,340,120,140,0,0,Math.PI*2);
-  ctx.fill();
-  ctx.stroke();
-
-  // ===== 머리 =====
-  ctx.beginPath();
-  ctx.arc(256,200,110,0,Math.PI*2);
-  ctx.fill();
-  ctx.stroke();
-
-  // ===== 왼쪽 귀 =====
-  ctx.beginPath();
-  ctx.ellipse(200,60,40,140,0,0,Math.PI*2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle="#ffb6c1";
-  ctx.beginPath();
-  ctx.ellipse(200,70,20,100,0,0,Math.PI*2);
+  ctx.ellipse(256,350,120,130,0,0,Math.PI*2);
   ctx.fill();
 
-  ctx.fillStyle="white";
-
-  // ===== 오른쪽 귀 =====
+  // 머리
   ctx.beginPath();
-  ctx.ellipse(312,60,40,140,0,0,Math.PI*2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle="#ffb6c1";
-  ctx.beginPath();
-  ctx.ellipse(312,70,20,100,0,0,Math.PI*2);
+  ctx.arc(256,210,115,0,Math.PI*2);
   ctx.fill();
 
-  ctx.fillStyle="white";
+  // 왼쪽 귀
+  ctx.beginPath();
+  ctx.ellipse(205,70,40,140,0,0,Math.PI*2);
+  ctx.fill();
 
-  // ===== 눈 =====
+  // 오른쪽 귀
+  ctx.beginPath();
+  ctx.ellipse(307,70,40,140,0,0,Math.PI*2);
+  ctx.fill();
+
+  // 귀 안쪽
+  ctx.fillStyle="#ffd6de";
+  ctx.beginPath();
+  ctx.ellipse(205,90,18,95,0,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(307,90,18,95,0,0,Math.PI*2);
+  ctx.fill();
+
+  // 눈 (작은 점)
   ctx.fillStyle="#222";
   ctx.beginPath();
-  ctx.arc(220,190,18,0,Math.PI*2);
-  ctx.arc(292,190,18,0,Math.PI*2);
+  ctx.arc(220,210,10,0,Math.PI*2);
+  ctx.arc(292,210,10,0,Math.PI*2);
   ctx.fill();
 
-  // 눈 하이라이트
-  ctx.fillStyle="white";
-  ctx.beginPath();
-  ctx.arc(214,182,6,0,Math.PI*2);
-  ctx.arc(286,182,6,0,Math.PI*2);
-  ctx.fill();
-
-  // ===== 볼 =====
-  ctx.fillStyle="rgba(255,150,170,0.5)";
-  ctx.beginPath();
-  ctx.arc(190,230,25,0,Math.PI*2);
-  ctx.arc(322,230,25,0,Math.PI*2);
-  ctx.fill();
-
-  // ===== 코 =====
-  ctx.fillStyle="#ff8fa3";
-  ctx.beginPath();
-  ctx.arc(256,215,12,0,Math.PI*2);
-  ctx.fill();
-
-  // ===== 입 =====
+  // 입 (작은 v)
+  ctx.lineWidth=6;
+  ctx.lineCap="round";
   ctx.strokeStyle="#222";
-  ctx.lineWidth=5;
   ctx.beginPath();
-  ctx.moveTo(256,227);
+  ctx.moveTo(246,240);
   ctx.lineTo(256,250);
+  ctx.lineTo(266,240);
   ctx.stroke();
 
+  // 볼
+  ctx.fillStyle=blushColor;
   ctx.beginPath();
-  ctx.arc(242,250,20,0,Math.PI/2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(270,250,20,Math.PI/2,Math.PI);
-  ctx.stroke();
-
-  // ===== 앞니 =====
-  ctx.fillStyle="white";
-  ctx.fillRect(244,240,10,16);
-  ctx.fillRect(258,240,10,16);
-  ctx.strokeRect(244,240,10,16);
-  ctx.strokeRect(258,240,10,16);
+  ctx.arc(190,235,25,0,Math.PI*2);
+  ctx.arc(322,235,25,0,Math.PI*2);
+  ctx.fill();
 
   const texture=new THREE.CanvasTexture(canvas);
 
@@ -369,7 +337,6 @@ function spawnBunny(){
 
   scene.add(bunnySprite);
 }
-
 function createCircleTexture(){
   const size=64;
   const canvas=document.createElement('canvas');
