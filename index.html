@@ -44,7 +44,6 @@ import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js
 let scene, camera, renderer;
 let moon, moonGroup;
 let bunnySprite=null;
-let bunnyTexture=null;
 
 let phase=0;
 let stopRotation = false;
@@ -60,6 +59,35 @@ let moonTouchedTwice=false;
 const status=document.getElementById("status");
 const btnGuide=document.getElementById("btnGuide");
 
+// ======== 네이버 앱 감지 & Chrome/Samsung 이동 ========
+(function(){
+  const ua = navigator.userAgent.toLowerCase();
+  const isNaver = ua.includes("naver");
+  const isAndroid = ua.includes("android");
+
+  if(isAndroid && isNaver){
+    const choice = confirm(
+      "네이버 앱 브라우저에서는 AR이 지원되지 않습니다.\n\n" +
+      "Chrome 또는 Samsung Internet에서 열어주세요."
+    );
+
+    if(choice){
+      const urlPath = location.href.replace(/^https?:\/\//, "");
+      // Chrome Intent
+      const chromeIntent = "intent://" + urlPath + "#Intent;scheme=https;package=com.android.chrome;end;";
+      // Samsung Internet Intent
+      const samsungIntent = "intent://" + urlPath + "#Intent;scheme=https;package=com.sec.android.app.sbrowser;end;";
+
+      // 기본적으로 Chrome Intent 시도
+      window.location.href = chromeIntent;
+      return; // 이동했으므로 init 종료
+    } else {
+      alert("네이버 앱에서는 AR이 지원되지 않습니다.");
+    }
+  }
+})();
+
+// ======== 기존 WebXR AR 초기화 ========
 init();
 
 function init(){
@@ -118,7 +146,6 @@ function resetScene(){
   moonGroup=null;
   moon=null;
   bunnySprite=null;
-  bunnyTexture=null;
   particles=[];
   phase=0;
   eclipseProgress=0;
@@ -151,10 +178,7 @@ function onSelect(){
     scene.remove(bunnySprite);
     bunnySprite = null;
 
-    // 🌕 회전 멈춤
     stopRotation = true;
-
-    // 🌕 우리가 익숙한 달 앞면으로 정렬
     moonGroup.rotation.set(0, -Math.PI / 2, 0);
 
     status.innerText="🌕 익숙한 달 앞면으로 멈췄어요!";
@@ -164,7 +188,6 @@ function onSelect(){
   const moonHit = moon && raycaster.intersectObject(moon).length;
   if(!moonHit) return;
 
-  // 🌕 회전 멈춤 상태라면 다시 회전 시작
   if(stopRotation){
     stopRotation = false;
     status.innerText="🌕 다시 회전합니다!";
@@ -201,7 +224,7 @@ function createMoon(){
       map:{value:loader.load('https://threejs.org/examples/textures/planets/moon_1024.jpg')},
       eclipse:{value:0},
       eclipseActive:{value:false},
-      phase:{value:0}
+      phase:{value:0},
     },
     vertexShader:`
       varying vec2 vUv;
@@ -225,7 +248,6 @@ function createMoon(){
         vec3 c=texture2D(map,vUv).rgb;
         c=pow(c,vec3(0.8));
         c=mix(vec3(0.15), c, 1.2);
-        c *= vec3(1.3, 1.15, 0.8);
 
         if(eclipseActive){
           float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
@@ -261,49 +283,36 @@ function spawnBunny(){
 
   ctx.clearRect(0,0,size,size);
 
-  // ===== 기본 색 =====
+  // 귀여운 만화 스타일 토끼
   const bodyColor="#f7f7f7";
   const blushColor="rgba(255,160,180,0.35)";
 
-  // 몸
   ctx.fillStyle=bodyColor;
   ctx.beginPath();
   ctx.ellipse(256,350,120,130,0,0,Math.PI*2);
   ctx.fill();
 
-  // 머리
   ctx.beginPath();
   ctx.arc(256,210,115,0,Math.PI*2);
   ctx.fill();
 
-  // 왼쪽 귀
   ctx.beginPath();
   ctx.ellipse(205,70,40,140,0,0,Math.PI*2);
-  ctx.fill();
-
-  // 오른쪽 귀
-  ctx.beginPath();
   ctx.ellipse(307,70,40,140,0,0,Math.PI*2);
   ctx.fill();
 
-  // 귀 안쪽
   ctx.fillStyle="#ffd6de";
   ctx.beginPath();
   ctx.ellipse(205,90,18,95,0,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.beginPath();
   ctx.ellipse(307,90,18,95,0,0,Math.PI*2);
   ctx.fill();
 
-  // 눈 (작은 점)
   ctx.fillStyle="#222";
   ctx.beginPath();
   ctx.arc(220,210,10,0,Math.PI*2);
   ctx.arc(292,210,10,0,Math.PI*2);
   ctx.fill();
 
-  // 입 (작은 v)
   ctx.lineWidth=6;
   ctx.lineCap="round";
   ctx.strokeStyle="#222";
@@ -313,7 +322,6 @@ function spawnBunny(){
   ctx.lineTo(266,240);
   ctx.stroke();
 
-  // 볼
   ctx.fillStyle=blushColor;
   ctx.beginPath();
   ctx.arc(190,235,25,0,Math.PI*2);
@@ -337,6 +345,7 @@ function spawnBunny(){
 
   scene.add(bunnySprite);
 }
+
 function createCircleTexture(){
   const size=64;
   const canvas=document.createElement('canvas');
