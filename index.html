@@ -95,10 +95,24 @@ function init(){
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,20);
 
-  renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
+  renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});
   renderer.setSize(window.innerWidth,window.innerHeight);
   renderer.xr.enabled=true;
   document.body.appendChild(renderer.domElement);
+
+  // ===== 📸 촬영 버튼 추가 =====
+  const btnCapture=document.createElement("button");
+  btnCapture.innerText="📸 사진 촬영";
+
+  btnCapture.onclick=()=>{
+    const img=renderer.domElement.toDataURL("image/png");
+    const link=document.createElement("a");
+    link.href=img;
+    link.download="moon-ar.png";
+    link.click();
+  };
+
+document.getElementById("ui").appendChild(btnCapture);
 
   scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
@@ -188,12 +202,6 @@ function onSelect(){
   const moonHit = moon && raycaster.intersectObject(moon).length;
   if(!moonHit) return;
 
-  if(stopRotation){
-    stopRotation = false;
-    status.innerText="🌕 다시 회전합니다!";
-    return;
-  }
-
   if(phase===1 && !moonTouchedOnce){
     moonTouchedOnce=true;
     createParticles(moonGroup.position);
@@ -246,8 +254,16 @@ function createMoon(){
       void main(){
 
         vec3 c=texture2D(map,vUv).rgb;
-        c=pow(c,vec3(0.8));
-        c=mix(vec3(0.15), c, 1.2);
+
+        // 밝기 보정
+        c = pow(c, vec3(0.9));
+
+        // 자연스러운 달빛 노란톤 추가
+        vec3 moonYellow = vec3(1.0, 0.88, 0.6);
+        c *= moonYellow;
+
+        // 살짝 발광 느낌
+        c *= 1.2;
 
         if(eclipseActive){
           float e=smoothstep(-1.+eclipse,-0.2+eclipse,vNormal.x);
@@ -341,7 +357,7 @@ function spawnBunny(){
 
   const side=Math.random()<0.5?-1:1;
   bunnySprite.position.copy(moonGroup.position)
-    .add(new THREE.Vector3(side*0.6,0,0));
+    .add(new THREE.Vector3(side*1.0,0,0));
 
   scene.add(bunnySprite);
 }
