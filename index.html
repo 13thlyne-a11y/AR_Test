@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR AR Moon + Bunny</title>
+<title>간이 AR 체험</title>
 <style>
 body { margin:0; overflow:hidden; }
 #ui{
@@ -27,11 +27,56 @@ body { margin:0; overflow:hidden; }
   background:rgba(0,0,0,0.85)!important;
   border:1px solid rgba(255,255,255,0.5)!important;
 }
+
+#introGuide{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.8);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  z-index:10000;
+}
+
+.guideBox{
+  background:#111;
+  padding:25px;
+  border-radius:12px;
+  color:white;
+  text-align:center;
+  max-width:300px;
+}
+
+.guideBox h2{
+  margin-top:0;
+}
+
+#btnCloseGuide{
+  margin-top:15px;
+  background:#444;
+  border:none;
+  color:white;
+  padding:8px 14px;
+  border-radius:6px;
+}
 </style>
 </head>
 <body>
 
 <div id="ui">
+  <div id="introGuide">
+    <div class="guideBox">
+      <h2>🌕 Web AR 달 체험</h2>
+      <p>1. AR 버튼을 눌러 시작하세요</p>
+      <p>2. 화면을 탭하면 회전하는 노란 보름달이 나타납니다</p>
+      <p>3. 달 근처에 있는 토끼를 탭하면 달이 멈춥니다</p>
+      <p>4. 달을 탭하면 달이 점점 어두워집니다</p>
+      <p>5. 1번 더 달을 탭하면 붉게 변합니다</p>
+      <p>6. 오른쪽 위에 있는 X를 누르면 AR이 종료됩니다</p>
+      <p>7. <주위의 모습을 달과 함께 캡쳐해 보세요></p>
+      <button id="btnCloseGuide">닫기</button>
+    </div>
+  </div>
   <div id="status">초기화 중...</div>
   <button id="btnGuide">📸 캡처/녹화 방법 안내</button>
 </div>
@@ -58,6 +103,12 @@ let moonTouchedTwice=false;
 
 const status=document.getElementById("status");
 const btnGuide=document.getElementById("btnGuide");
+const introGuide=document.getElementById("introGuide");
+const btnCloseGuide=document.getElementById("btnCloseGuide");
+
+btnCloseGuide.onclick=()=>{
+  introGuide.style.display="none";
+};
 
 // ======== 네이버 앱 감지 & Chrome/Samsung 이동 ========
 (function(){
@@ -95,24 +146,10 @@ function init(){
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,20);
 
-  renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});
+  renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
   renderer.setSize(window.innerWidth,window.innerHeight);
   renderer.xr.enabled=true;
   document.body.appendChild(renderer.domElement);
-
-  // ===== 📸 촬영 버튼 추가 =====
-  const btnCapture=document.createElement("button");
-  btnCapture.innerText="📸 사진 촬영";
-
-  btnCapture.onclick=()=>{
-    const img=renderer.domElement.toDataURL("image/png");
-    const link=document.createElement("a");
-    link.href=img;
-    link.download="moon-ar.png";
-    link.click();
-  };
-
-document.getElementById("ui").appendChild(btnCapture);
 
   scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
@@ -137,6 +174,7 @@ document.getElementById("ui").appendChild(btnCapture);
 
         renderer.xr.addEventListener("sessionstart",()=>{
           status.innerText="화면을 탭하면 보름달이 나타납니다 🌕";
+          introGuide.style.display="none";
         });
 
         renderer.xr.addEventListener("sessionend", resetScene);
